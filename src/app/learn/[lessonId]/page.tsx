@@ -7,6 +7,7 @@ import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Lightbulb, LoaderCircle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/context';
+import { getBoardTheme } from '@/lib/boardThemes';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +91,8 @@ const copy = {
     xp: 'XP earned',
     difficulty: 'Performance by difficulty',
     review: 'Answer review',
+    yourAnswer: 'Your answer',
+    correctAnswer: 'Correct answer',
     retry: 'Retry quiz',
     continueLearning: 'Continue learning',
     exampleBack: 'Previous move',
@@ -129,6 +132,8 @@ const copy = {
     xp: 'XP gagnés',
     difficulty: 'Résultats par difficulté',
     review: 'Correction des réponses',
+    yourAnswer: 'Votre réponse',
+    correctAnswer: 'Bonne réponse',
     retry: 'Recommencer le quiz',
     continueLearning: 'Continuer l’apprentissage',
     exampleBack: 'Coup précédent',
@@ -168,6 +173,8 @@ const copy = {
     xp: 'نقاط الخبرة المكتسبة',
     difficulty: 'الأداء حسب الصعوبة',
     review: 'مراجعة الإجابات',
+    yourAnswer: 'إجابتك',
+    correctAnswer: 'الإجابة الصحيحة',
     retry: 'أعد الاختبار',
     continueLearning: 'تابع التعلّم',
     exampleBack: 'النقلة السابقة',
@@ -189,6 +196,7 @@ export default function LessonDetailPage() {
   const lessonId = params.lessonId;
   const { language } = useI18n();
   const labels = copy[language];
+  const boardTheme = getBoardTheme();
   const [lesson, setLesson] = useState<AcademyLesson | null>(null);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -350,6 +358,16 @@ export default function LessonDetailPage() {
                       : <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-xs text-red-300">!</span>}
                     <div>
                       <p className="font-semibold">{labels.question} {index + 1}: {localized(questions[index]?.prompt, language)}</p>
+                      <p className="mt-2 text-sm">
+                        <span className={item.correct ? 'text-green-300' : 'text-red-300'}>
+                          {labels.yourAnswer}: {localized(questions[index]?.choices.find((choice) => choice.id === item.selectedAnswer)?.label, language) || item.selectedAnswer}
+                        </span>
+                      </p>
+                      {!item.correct && (
+                        <p className="mt-1 text-sm text-green-300">
+                          {labels.correctAnswer}: {localized(questions[index]?.choices.find((choice) => choice.id === item.correctAnswer)?.label, language) || item.correctAnswer}
+                        </p>
+                      )}
                       <p className="mt-1 text-sm text-text-secondary">{localized(item.explanation, language)}</p>
                       {item.solutionMoves.length > 0 && (
                         <p className="mt-2 font-mono text-sm text-accent">{item.solutionMoves.join(' ')}</p>
@@ -365,6 +383,14 @@ export default function LessonDetailPage() {
             <button onClick={startQuiz} className="rounded-xl bg-accent px-5 py-3 font-semibold text-white hover:bg-accent-hover">
               {labels.retry}
             </button>
+            {result.passed && lesson.lesson_number < 10 && (
+              <Link
+                href={`/learn/l${lesson.level_number}-${String(lesson.lesson_number + 1).padStart(2, '0')}`}
+                className="rounded-xl border border-green-500/30 bg-green-500/10 px-5 py-3 font-semibold text-green-300"
+              >
+                {labels.next} · {labels.continueLearning}
+              </Link>
+            )}
             <Link href="/learn" className="rounded-xl border border-text-secondary/20 px-5 py-3 font-semibold hover:bg-background-secondary">
               {labels.continueLearning}
             </Link>
@@ -386,6 +412,8 @@ export default function LessonDetailPage() {
                 position: currentQuestion.fen,
                 allowDragging: false,
                 boardStyle: { width: '100%', borderRadius: '8px' },
+                lightSquareStyle: { backgroundColor: boardTheme.light },
+                darkSquareStyle: { backgroundColor: boardTheme.dark },
               }} />
             </div>
           )}
@@ -485,6 +513,8 @@ export default function LessonDetailPage() {
                 position: exampleFen,
                 allowDragging: false,
                 boardStyle: { width: '100%', borderRadius: '8px' },
+                lightSquareStyle: { backgroundColor: boardTheme.light },
+                darkSquareStyle: { backgroundColor: boardTheme.dark },
               }} />
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-center gap-3">

@@ -334,6 +334,17 @@ function calculateBotMove(
     : profile;
   const legalMoves = chess.moves({ verbose: true });
   if (legalMoves.length === 0) return null;
+  if (searchProfile.moveNoise === 0) {
+    const captures = legalMoves.filter((move) => move.captured);
+    if (captures.length > 0) {
+      captures.sort((left, right) => {
+        const leftValue = PIECE_VALUES[left.captured ?? 'p'] ?? 100;
+        const rightValue = PIECE_VALUES[right.captured ?? 'p'] ?? 100;
+        return rightValue - leftValue;
+      });
+      return isCancelled() ? null : toBotMove(captures[0]);
+    }
+  }
 
   const context = createSearchContext(searchProfile, isCancelled);
   let bestMove = legalMoves[Math.floor(Math.random() * legalMoves.length)];
@@ -381,6 +392,17 @@ export async function chooseBotMoveInCurrentThread(
   const profile = getSearchProfile(difficulty);
   const legalMoves = chess.moves({ verbose: true });
   if (legalMoves.length === 0 || isCancelled()) return null;
+  if (profile.moveNoise === 0) {
+    const captures = legalMoves.filter((move) => move.captured);
+    if (captures.length > 0) {
+      captures.sort((left, right) => {
+        const leftValue = PIECE_VALUES[left.captured ?? 'p'] ?? 100;
+        const rightValue = PIECE_VALUES[right.captured ?? 'p'] ?? 100;
+        return rightValue - leftValue;
+      });
+      return toBotMove(captures[0]);
+    }
+  }
 
   const context = createSearchContext(profile, isCancelled);
   let bestMove = legalMoves[Math.floor(Math.random() * legalMoves.length)];

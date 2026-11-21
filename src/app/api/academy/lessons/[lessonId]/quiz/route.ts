@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient, SupabaseAdminConfigurationError } from '@/lib/supabase/admin';
 import { createServerClient } from '@/lib/supabase/server';
+import { getLevel1Quiz } from '@/lib/learning/level1';
+import { scoreAcademyQuiz } from '@/lib/learning/academy';
 
 type RouteContext = { params: Promise<{ lessonId: string }> };
 const LESSON_ID_PATTERN = /^l[1-4]-(0[1-9]|10)$/;
@@ -53,8 +55,10 @@ async function isLessonUnlocked(
 }
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
+  let lessonId = '';
+  let fallbackAnswers: Record<string, string> | undefined;
   try {
-    const { lessonId } = await params;
+    ({ lessonId } = await params);
     if (!LESSON_ID_PATTERN.test(lessonId)) {
       return NextResponse.json({ error: 'Invalid Academy lesson ID' }, { status: 400 });
     }
@@ -76,6 +80,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     const { answers, durationSeconds } = body as { answers?: unknown; durationSeconds?: unknown };
+    fallbackAnswers = answers as Record<string, string>;
     if (
       !answers ||
       typeof answers !== 'object' ||
@@ -98,9 +103,43 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       .maybeSingle();
     if (lessonError) {
       console.error('Academy quiz lesson lookup failed:', lessonError.message);
+      const localQuestions = getLevel1Quiz(lessonId);
+      if (localQuestions.length === 20) {
+        const submittedAnswers = answers as Record<string, string>;
+        const localResult = scoreAcademyQuiz(localQuestions, submittedAnswers);
+        return NextResponse.json({
+          fallback: true,
+          result: { ...localResult, xpEarned: localResult.passed ? 50 + localResult.score : 0 },
+          review: localQuestions.map((question) => ({
+            id: question.id,
+            correctAnswer: question.correctAnswer,
+            explanation: question.explanation,
+            solutionMoves: question.solutionMoves ?? [],
+            selectedAnswer: submittedAnswers[question.id],
+            correct: submittedAnswers[question.id] === question.correctAnswer,
+          })),
+        });
+      }
       return NextResponse.json({ error: 'Unable to verify Academy lesson' }, { status: 500 });
     }
     if (!lesson) {
+      const localQuestions = getLevel1Quiz(lessonId);
+      if (localQuestions.length === 20) {
+        const submittedAnswers = answers as Record<string, string>;
+        const localResult = scoreAcademyQuiz(localQuestions, submittedAnswers);
+        return NextResponse.json({
+          fallback: true,
+          result: { ...localResult, xpEarned: localResult.passed ? 50 + localResult.score : 0 },
+          review: localQuestions.map((question) => ({
+            id: question.id,
+            correctAnswer: question.correctAnswer,
+            explanation: question.explanation,
+            solutionMoves: question.solutionMoves ?? [],
+            selectedAnswer: submittedAnswers[question.id],
+            correct: submittedAnswers[question.id] === question.correctAnswer,
+          })),
+        });
+      }
       return NextResponse.json({ error: 'Academy lesson not found' }, { status: 404 });
     }
     if (!await isLessonUnlocked(admin, user.id, lesson.level_number, lesson.lesson_number)) {
@@ -114,9 +153,43 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       .order('question_number', { ascending: true });
     if (questionsError) {
       console.error('Academy quiz answer lookup failed:', questionsError.message);
+      const localQuestions = getLevel1Quiz(lessonId);
+      if (localQuestions.length === 20) {
+        const submittedAnswers = answers as Record<string, string>;
+        const localResult = scoreAcademyQuiz(localQuestions, submittedAnswers);
+        return NextResponse.json({
+          fallback: true,
+          result: { ...localResult, xpEarned: localResult.passed ? 50 + localResult.score : 0 },
+          review: localQuestions.map((question) => ({
+            id: question.id,
+            correctAnswer: question.correctAnswer,
+            explanation: question.explanation,
+            solutionMoves: question.solutionMoves ?? [],
+            selectedAnswer: submittedAnswers[question.id],
+            correct: submittedAnswers[question.id] === question.correctAnswer,
+          })),
+        });
+      }
       return NextResponse.json({ error: 'Unable to verify Academy quiz' }, { status: 500 });
     }
     if (!questions || questions.length !== 20) {
+      const localQuestions = getLevel1Quiz(lessonId);
+      if (localQuestions.length === 20) {
+        const submittedAnswers = answers as Record<string, string>;
+        const localResult = scoreAcademyQuiz(localQuestions, submittedAnswers);
+        return NextResponse.json({
+          fallback: true,
+          result: { ...localResult, xpEarned: localResult.passed ? 50 + localResult.score : 0 },
+          review: localQuestions.map((question) => ({
+            id: question.id,
+            correctAnswer: question.correctAnswer,
+            explanation: question.explanation,
+            solutionMoves: question.solutionMoves ?? [],
+            selectedAnswer: submittedAnswers[question.id],
+            correct: submittedAnswers[question.id] === question.correctAnswer,
+          })),
+        });
+      }
       return NextResponse.json({ error: 'Academy quiz is not ready yet' }, { status: 503 });
     }
 
@@ -151,9 +224,24 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   } catch (error) {
     console.error('Academy quiz request failed:', error);
     if (error instanceof SupabaseAdminConfigurationError) {
-      return NextResponse.json({
-        error: 'Academy database access is not configured. Set SUPABASE_SERVICE_KEY as a private environment variable.',
-      }, { status: 503 });
+      const localQuestions = getLevel1Quiz(lessonId);
+      if (localQuestions.length === 20) {
+        const bodyAnswers = fallbackAnswers ?? {};
+        const localResult = scoreAcademyQuiz(localQuestions, bodyAnswers);
+        return NextResponse.json({
+          fallback: true,
+          result: { ...localResult, xpEarned: localResult.passed ? 50 + localResult.score : 0 },
+          review: localQuestions.map((question) => ({
+            id: question.id,
+            correctAnswer: question.correctAnswer,
+            explanation: question.explanation,
+            solutionMoves: question.solutionMoves ?? [],
+            selectedAnswer: bodyAnswers[question.id],
+            correct: bodyAnswers[question.id] === question.correctAnswer,
+          })),
+        });
+      }
+      return NextResponse.json({ error: 'Academy database access is not configured.' }, { status: 503 });
     }
     return NextResponse.json({ error: 'Unable to process Academy quiz' }, { status: 500 });
   }

@@ -6,6 +6,7 @@ import { GameEngine } from '@/lib/chess/game';
 import { formatTime } from '@/lib/utils';
 import { RotateCcw, Undo2, ArrowLeftRight } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/context';
+import { getBoardTheme } from '@/lib/boardThemes';
 
 interface ChessBoardProps {
   engine: GameEngine;
@@ -51,6 +52,7 @@ export default function ChessBoard({
   blackRating = 200,
 }: ChessBoardProps) {
   const { tr } = useI18n();
+  const boardTheme = getBoardTheme();
   const [orientation, setOrientation] = useState<'white' | 'black'>(initialOrientation);
   const [lastMove, setLastMove] = useState<string | null>(null);
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null);
@@ -219,6 +221,8 @@ export default function ChessBoard({
                 width: '100%',
                 borderRadius: '8px',
               },
+              lightSquareStyle: { backgroundColor: boardTheme.light },
+              darkSquareStyle: { backgroundColor: boardTheme.dark },
             }}
           />
         </div>

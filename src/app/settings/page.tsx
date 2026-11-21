@@ -2,10 +2,13 @@
 
 import { useI18n } from '@/lib/i18n/context';
 import { isLanguage } from '@/lib/i18n/translations';
-import { Globe, ShieldCheck, Volume2, Monitor } from 'lucide-react';
+import { Globe, Monitor } from 'lucide-react';
+import { useState } from 'react';
+import { BOARD_THEMES, getBoardTheme, setBoardTheme, type BoardThemeId } from '@/lib/boardThemes';
 
 export default function SettingsPage() {
   const { language, setLanguage, t, tr } = useI18n();
+  const [boardTheme, updateBoardTheme] = useState<BoardThemeId>(getBoardTheme().id);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 text-text-primary">
@@ -50,6 +53,29 @@ export default function SettingsPage() {
             {tr('Board & Sound Preferences')}
           </h2>
           <div className="space-y-4">
+            <div>
+              <p className="mb-3 text-sm font-medium">{tr('Board Theme')}</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {BOARD_THEMES.map((theme) => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    aria-pressed={boardTheme === theme.id}
+                    onClick={() => {
+                      updateBoardTheme(theme.id);
+                      setBoardTheme(theme.id);
+                    }}
+                    className={`rounded-xl border p-3 text-start ${boardTheme === theme.id ? 'border-accent ring-2 ring-accent/30' : 'border-text-secondary/20'}`}
+                  >
+                    <span className="mb-2 grid grid-cols-2 overflow-hidden rounded-lg">
+                      <span className="h-7" style={{ background: theme.light }} />
+                      <span className="h-7" style={{ background: theme.dark }} />
+                    </span>
+                    <span className="text-xs font-semibold">{theme.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <label className="flex items-center justify-between p-3 bg-background-tertiary rounded-xl border border-text-secondary/10">
               <span className="text-sm font-medium">{tr('Enable Move Sounds')}</span>
               <input type="checkbox" defaultChecked className="w-4 h-4 accent-accent" />

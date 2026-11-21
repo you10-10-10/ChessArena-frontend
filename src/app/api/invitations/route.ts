@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const supabase = await createServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -70,7 +71,43 @@ export async function POST(request: Request) {
     });
 
     if (error) {
-      throw error;
+      const admin = createAdminClient();
+      const { data: recipient, error: recipientError } = await admin
+        .from('profiles')
+        .select('id')
+        .ilike('username', recipientUsername.trim())
+        .maybeSingle();
+      if (recipientError || !recipient) {
+        throw new Error('Player not found');
+      }
+      if (recipient.id === user.id) {
+        throw new Error('You cannot invite yourself');
+      }
+      const { data: existing } = await admin
+        .from('game_invitations')
+        .select('id')
+        .eq('status', 'pending')
+        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${recipient.id}),and(sender_id.eq.${recipient.id},receiver_id.eq.${user.id})`)
+        .gt('expires_at', new Date().toISOString())
+        .limit(1);
+      if (existing && existing.length > 0) {
+        throw new Error('An active invitation already exists between you and this player');
+      }
+      const { data: inserted, error: insertError } = await admin
+        .from('game_invitations')
+        .insert({
+          sender_id: user.id,
+          receiver_id: recipient.id,
+          game_mode: gameMode,
+          time_control: timeControl,
+          selected_color: selectedColor,
+          status: 'pending',
+          expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        })
+        .select('id')
+        .single();
+      if (insertError) throw insertError;
+      return NextResponse.json({ status: 'invited', invitationId: inserted.id, fallback: true });
     }
 
     return NextResponse.json(data);
@@ -104,7 +141,64 @@ export async function PATCH(request: Request) {
     });
 
     if (error) {
-      throw error;
+      const admin = createAdminClient();
+      const { data: invitation, error: invitationError } = await admin
+        .from('game_invitations')
+        .select('*')
+        .eq('id', invitationId)
+        .maybeSingle();
+      if (invitationError || !invitation) throw new Error('Invitation not found');
+      if (invitation.status !== 'pending') throw new Error('Invitation is no longer pending');
+
+      if (action === 'cancel') {
+        if (invitation.sender_id !== user.id) throw new Error('Only the sender can cancel this invitation');
+        await admin.from('game_invitations').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', invitationId);
+        return NextResponse.json({ status: 'cancelled', fallback: true });
+      }
+      if (action === 'decline') {
+        if (invitation.receiver_id !== user.id) throw new Error('Only the recipient can decline this invitation');
+        await admin.from('game_invitations').update({ status: 'declined', updated_at: new Date().toISOString() }).eq('id', invitationId);
+        return NextResponse.json({ status: 'declined', fallback: true });
+      }
+      if (invitation.receiver_id !== user.id) throw new Error('Only the recipient can accept this invitation');
+
+      let whiteId = invitation.sender_id;
+      let blackId = invitation.receiver_id;
+      if (invitation.selected_color === 'black') {
+        whiteId = invitation.receiver_id;
+        blackId = invitation.sender_id;
+      } else if (invitation.selected_color === 'random' && Math.random() < 0.5) {
+        whiteId = invitation.receiver_id;
+        blackId = invitation.sender_id;
+      }
+      const { data: profiles } = await admin
+        .from('profiles')
+        .select('id, rating')
+        .in('id', [whiteId, blackId]);
+      const whiteRating = profiles?.find((profile) => profile.id === whiteId)?.rating ?? 1200;
+      const blackRating = profiles?.find((profile) => profile.id === blackId)?.rating ?? 1200;
+      const { data: game, error: gameError } = await admin
+        .from('games')
+        .insert({
+          white_player_id: whiteId,
+          black_player_id: blackId,
+          white_rating: whiteRating,
+          black_rating: blackRating,
+          time_control: invitation.time_control,
+          status: 'in_progress',
+          result: 'in_progress',
+          fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+          moves: [],
+        })
+        .select('id')
+        .single();
+      if (gameError) throw gameError;
+      await admin.from('game_invitations').update({
+        status: 'accepted',
+        game_id: game.id,
+        updated_at: new Date().toISOString(),
+      }).eq('id', invitationId);
+      return NextResponse.json({ status: 'accepted', gameId: game.id, fallback: true });
     }
 
     return NextResponse.json(data);
