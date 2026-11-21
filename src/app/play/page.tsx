@@ -17,7 +17,11 @@ import {
 } from '@/lib/chess/botProfiles';
 import { saveBotGame, type BotGameRecord } from '@/lib/chess/botGameHistory';
 import { getCurrentTimeMs, parseTimeControl } from '@/lib/utils';
-import { getStockfishClient, type StockfishProgress } from '@/lib/chess/stockfishClient';
+import {
+  getStockfishClient,
+  resetStockfishClient,
+  type StockfishProgress,
+} from '@/lib/chess/stockfishClient';
 import { createGame, GameEngine } from '@/lib/chess/game';
 import { Bot, User, ArrowLeft, RotateCcw, UserPlus, History } from 'lucide-react';
 import type { TranslationKey } from '@/lib/i18n/translations';
@@ -81,6 +85,7 @@ function PlayContent() {
   const [timeoutWinner, setTimeoutWinner] = useState<'white_wins' | 'black_wins' | null>(null);
   const [engineProgress, setEngineProgress] = useState<StockfishProgress | null>(null);
   const [engineLoaded, setEngineLoaded] = useState(false);
+  const [engineRetryKey, setEngineRetryKey] = useState(0);
   const [matchStatus, setMatchStatus] = useState<MatchStatus>('idle');
   const [matching, setMatching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,26 +97,40 @@ function PlayContent() {
   const finishLocalGameRef = useRef<((engine: GameEngine, result: 'white_wins' | 'black_wins' | 'draw', reason: 'checkmate' | 'draw' | 'timeout') => void) | null>(null);
   const effectiveMode = !authLoading && !user ? 'local' : mode;
 
+  const engineFailureMessage = t('botEngineFailure');
   useEffect(() => {
-    if (modeParam !== 'bot') return;
+    if (effectiveMode !== 'local' || localOpponent !== 'bot') return;
     let active = true;
+    const profile = getBotProfile(botDifficulty);
+    setEngineLoaded(false);
+    setError(null);
+    setEngineProgress({ loadedBytes: 0, totalBytes: null, phase: 'engine' });
     void getStockfishClient((progress) => {
       if (active) setEngineProgress(progress);
-    }).then(() => {
+    }).then(async (client) => {
+      if (!profile) throw new Error(`Unknown computer opponent: ${botDifficulty}.`);
+      await client.configure(profile);
       if (active) {
         setEngineLoaded(true);
         setEngineProgress(null);
       }
     }).catch((engineError: unknown) => {
       if (active) {
+        resetStockfishClient();
         setEngineProgress(null);
-        setError(engineError instanceof Error ? engineError.message : t('botEngineFailure'));
+        setError(engineError instanceof Error ? engineError.message : engineFailureMessage);
       }
     });
     return () => {
       active = false;
     };
-  }, [modeParam, t]);
+  }, [
+    botDifficulty,
+    effectiveMode,
+    engineFailureMessage,
+    engineRetryKey,
+    localOpponent,
+  ]);
 
   // Poll for incoming invitations count badge
   useEffect(() => {
@@ -221,7 +240,6 @@ function PlayContent() {
         isCancelled: () => botRequestRef.current !== requestId,
         onProgress: (progress) => {
           setEngineProgress(progress);
-          if (progress.phase === 'engine') setEngineLoaded(true);
         },
       });
       if (botRequestRef.current !== requestId) return;
@@ -282,11 +300,11 @@ function PlayContent() {
     setBotDifficulty(difficulty);
     setError(null);
     setBotThinking(false);
-    setEngineProgress(null);
+    if (engineLoaded || opponent !== 'bot') setEngineProgress(null);
     setFinishedGame(null);
     setTimeoutWinner(null);
     gameCompletionRef.current = false;
-    gameStartedAtRef.current = getCurrentTimeMs();
+    gameStartedAtRef.current = opponent === 'bot' ? 0 : getCurrentTimeMs();
     lastClockTickRef.current = getCurrentTimeMs();
     const initialTime = parseTimeControl(timeControl).initial;
     const nextClocks = { w: initialTime, b: initialTime };
@@ -294,7 +312,8 @@ function PlayContent() {
     setClocks(nextClocks);
     const newGame = createGame();
     setGameEngine(newGame);
-    if (opponent === 'bot' && color === 'b') {
+    initialBotTurnStartedRef.current = false;
+    if (opponent === 'bot' && color === 'b' && engineLoaded) {
       initialBotTurnStartedRef.current = true;
       void runBotTurn(newGame, color, difficulty);
     }
@@ -309,6 +328,7 @@ function PlayContent() {
     if (
       modeParam !== 'bot'
       || humanColor !== 'b'
+      || !engineLoaded
       || !gameEngine
       || gameEngine.moveHistory.length > 0
       || initialBotTurnStartedRef.current
@@ -317,12 +337,13 @@ function PlayContent() {
     }
     initialBotTurnStartedRef.current = true;
     void runBotTurnRef.current?.(gameEngine, humanColor, botDifficulty);
-  }, [botDifficulty, gameEngine, humanColor, modeParam]);
+  }, [botDifficulty, engineLoaded, gameEngine, humanColor, modeParam]);
 
   useEffect(() => {
     if (
       effectiveMode !== 'local'
       || localOpponent !== 'bot'
+      || !engineLoaded
       || !gameEngine
       || finishedGame
       || gameEngine.gameOver
@@ -353,7 +374,7 @@ function PlayContent() {
       }
     }, 250);
     return () => window.clearInterval(timer);
-  }, [effectiveMode, finishedGame, gameEngine, localOpponent]);
+  }, [effectiveMode, engineLoaded, finishedGame, gameEngine, localOpponent]);
 
   const handleJoinMatch = async () => {
     setMatching(true);
@@ -477,8 +498,17 @@ function PlayContent() {
       </header>
 
       {error && (
-        <div role="alert" className="mb-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">
-          {error}
+        <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">
+          <span>{error}</span>
+          {!engineLoaded && effectiveMode === 'local' && localOpponent === 'bot' && (
+            <button
+              type="button"
+              onClick={() => setEngineRetryKey((key) => key + 1)}
+              className="rounded-lg border border-red-300/40 px-3 py-1.5 text-sm font-semibold hover:bg-red-500/10"
+            >
+              {tr('Retry')}
+            </button>
+          )}
         </div>
       )}
 
@@ -573,7 +603,7 @@ function PlayContent() {
             isHotSeat={localOpponent === 'hotseat'}
             undoPlies={localOpponent === 'bot' && gameEngine.moveHistory.length > 1 ? 2 : 1}
             allowUndo={localOpponent === 'hotseat' && !botThinking}
-            isInputEnabled={!botThinking && !finishedGame && !timeoutWinner && (localOpponent === 'hotseat' || gameEngine.turn === humanColor)}
+            isInputEnabled={!botThinking && !finishedGame && !timeoutWinner && (localOpponent === 'hotseat' || (engineLoaded && gameEngine.turn === humanColor))}
             whiteName={humanColor === 'w' ? (user?.email || 'Player') : botName}
             blackName={humanColor === 'b' ? (user?.email || 'Player') : botName}
             whiteRating={humanColor === 'w' ? 200 : botElo}

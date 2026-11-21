@@ -270,6 +270,7 @@ export class StockfishClient {
 }
 
 let sharedClientPromise: Promise<StockfishClient> | null = null;
+let sharedClient: StockfishClient | null = null;
 
 export async function getStockfishClient(
   onProgress?: (progress: StockfishProgress) => void,
@@ -283,11 +284,20 @@ export async function getStockfishClient(
       onProgress?.({ loadedBytes: 0, totalBytes: null, phase: 'engine' });
       const client = new StockfishClient();
       await client.initialize();
+      sharedClient = client;
       return client;
     })().catch((error: unknown) => {
+      sharedClient = null;
       sharedClientPromise = null;
       throw error;
     });
   }
   return sharedClientPromise;
+}
+
+export function resetStockfishClient(): void {
+  const client = sharedClient;
+  sharedClient = null;
+  sharedClientPromise = null;
+  client?.terminate();
 }
