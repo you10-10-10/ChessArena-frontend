@@ -64,10 +64,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     const authClient = await createServerClient();
-    const { data: { user }, error: authError } = await authClient.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
+    const { data: { user } } = await authClient.auth.getUser();
 
     let body: unknown;
     try {
@@ -92,6 +89,31 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       (durationSeconds as number) > 86400
     ) {
       return NextResponse.json({ error: 'Invalid Academy quiz submission' }, { status: 400 });
+    }
+
+    if (!user) {
+      const localQuestions = getLevel1Quiz(lessonId);
+      if (localQuestions.length === 20) {
+        const submittedAnswers = answers as Record<string, string>;
+        const localResult = scoreAcademyQuiz(localQuestions, submittedAnswers);
+        return NextResponse.json({
+          fallback: true,
+          saved: false,
+          result: { ...localResult, xpEarned: 0 },
+          review: localQuestions.map((question) => ({
+            id: question.id,
+            correctAnswer: question.correctAnswer,
+            explanation: {
+              en: 'Review the lesson theory and your selected answer.',
+              fr: 'Relisez la théorie et votre réponse.',
+              ar: 'راجع شرح الدرس وإجابتك.',
+            },
+            solutionMoves: question.solutionMoves ?? [],
+            selectedAnswer: submittedAnswers[question.id],
+            correct: submittedAnswers[question.id] === question.correctAnswer,
+          })),
+        });
+      }
     }
 
     const admin = createAdminClient();
@@ -141,6 +163,24 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         });
       }
       return NextResponse.json({ error: 'Academy lesson not found' }, { status: 404 });
+    }
+    if (!user) {
+      const localQuestions = getLevel1Quiz(lessonId);
+      const submittedAnswers = answers as Record<string, string>;
+      const localResult = scoreAcademyQuiz(localQuestions, submittedAnswers);
+      return NextResponse.json({
+        fallback: true,
+        saved: false,
+        result: { ...localResult, xpEarned: 0 },
+        review: localQuestions.map((question) => ({
+          id: question.id,
+          correctAnswer: question.correctAnswer,
+          explanation: question.explanation,
+          solutionMoves: question.solutionMoves ?? [],
+          selectedAnswer: submittedAnswers[question.id],
+          correct: submittedAnswers[question.id] === question.correctAnswer,
+        })),
+      });
     }
     if (!await isLessonUnlocked(admin, user.id, lesson.level_number, lesson.lesson_number)) {
       return NextResponse.json({ error: 'Pass the previous lesson to unlock this one' }, { status: 403 });

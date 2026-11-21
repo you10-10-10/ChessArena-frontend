@@ -8,6 +8,7 @@ import { Chessboard } from 'react-chessboard';
 import { ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Lightbulb, LoaderCircle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/context';
 import { getBoardTheme } from '@/lib/boardThemes';
+import { useAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,7 @@ interface QuizQuestion {
   choices: QuizChoice[];
   hint?: LocalizedText;
   fen?: string;
+  correctAnswer: string;
 }
 interface QuizReview {
   id: string;
@@ -195,6 +197,7 @@ export default function LessonDetailPage() {
   const params = useParams<{ lessonId: string }>();
   const lessonId = params.lessonId;
   const { language } = useI18n();
+  const { user } = useAuth();
   const labels = copy[language];
   const boardTheme = getBoardTheme();
   const [lesson, setLesson] = useState<AcademyLesson | null>(null);
@@ -257,20 +260,71 @@ export default function LessonDetailPage() {
     setSubmitting(true);
     setSubmitError('');
     const durationSeconds = Math.min(86400, Math.max(0, Math.floor((Date.now() - (startedAt.current ?? Date.now())) / 1000)));
+
+    const mutableDifficulty = {
+      easy: { correct: 0, total: 0 },
+      medium: { correct: 0, total: 0 },
+      hard: { correct: 0, total: 0 },
+    };
+    let score = 0;
+    for (const question of questions) {
+      mutableDifficulty[question.difficulty].total += 1;
+      if (answers[question.id] === question.correctAnswer) {
+        score += 1;
+        mutableDifficulty[question.difficulty].correct += 1;
+      }
+    }
+    const localResult: SubmissionResult = {
+      score,
+      percentage: score * 5,
+      passed: score >= 15,
+      xpEarned: score >= 15 ? 50 + score : 0,
+      byDifficulty: mutableDifficulty,
+    };
+    const localReview: QuizReview[] = questions.map((question) => ({
+      id: question.id,
+      correctAnswer: question.correctAnswer,
+      explanation: { en: 'Review the lesson theory and your selected answer.', fr: 'Relisez la théorie et votre réponse.', ar: 'راجع شرح الدرس وإجابتك.' },
+      solutionMoves: question.fen ? [] : [],
+      selectedAnswer: answers[question.id],
+      correct: answers[question.id] === question.correctAnswer,
+    }));
+
     try {
-      const response = await fetch(`/api/academy/lessons/${lesson.id}/quiz`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers, durationSeconds }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || labels.errorSubmit);
-      setResult(payload.result);
-      setReview(payload.review);
-      setQuizMode(false);
+      if (user) {
+        const response = await fetch(`/api/academy/lessons/${lesson.id}/quiz`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers, durationSeconds }),
+        });
+        const payload = await response.json();
+        if (response.ok) {
+          setResult(payload.result);
+          setReview(payload.review);
+        } else {
+          setResult(localResult);
+          setReview(localReview);
+        }
+      } else {
+        setResult(localResult);
+        setReview(localReview);
+      }
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : labels.errorSubmit);
+      setResult(localResult);
+      setReview(localReview);
+      console.error('Academy quiz database save failed:', error);
     } finally {
+      try {
+        window.localStorage.setItem(`chessarena_academy_${lesson.id}`, JSON.stringify({
+          score,
+          passed: score >= 15,
+          attempts: ((JSON.parse(window.localStorage.getItem(`chessarena_academy_${lesson.id}`) || '{}').attempts ?? 0) + 1),
+          updatedAt: new Date().toISOString(),
+        }));
+      } catch {
+        // Local progress storage is optional.
+      }
+      setQuizMode(false);
       setSubmitting(false);
     }
   }
@@ -424,8 +478,10 @@ export default function LessonDetailPage() {
                 onClick={() => setAnswers((previous) => ({ ...previous, [currentQuestion.id]: choice.id }))}
                 aria-pressed={selectedAnswer === choice.id}
                 className={`flex items-center gap-3 rounded-xl border p-4 text-start transition-colors ${
-                  selectedAnswer === choice.id
-                    ? 'border-accent bg-accent/15'
+                  selectedAnswer === choice.id && choice.id === currentQuestion.correctAnswer
+                    ? 'border-green-500/60 bg-green-500/10'
+                    : selectedAnswer === choice.id
+                    ? 'border-red-500/60 bg-red-500/10'
                     : 'border-text-secondary/15 bg-background-tertiary hover:border-accent/50'
                 }`}
               >
@@ -433,6 +489,11 @@ export default function LessonDetailPage() {
                   {String.fromCharCode(65 + index)}
                 </span>
                 <span>{localized(choice.label, language)}</span>
+                {selectedAnswer === choice.id && (
+                  <span className={`ms-auto text-xs font-bold ${choice.id === currentQuestion.correctAnswer ? 'text-green-300' : 'text-red-300'}`}>
+                    {choice.id === currentQuestion.correctAnswer ? '✓ Correct' : '✕ Incorrect'}
+                  </span>
+                )}
               </button>
             ))}
           </div>

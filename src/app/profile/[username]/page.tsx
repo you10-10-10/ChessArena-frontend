@@ -87,6 +87,9 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState('profile');
   const [error, setError] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [academyProgress, setAcademyProgress] = useState<{ passed: number; attempts: number; bestScore: number }>(
+    { passed: 0, attempts: 0, bestScore: 0 }
+  );
 
   const loadProfile = useCallback(async () => {
     if (loading) return;
@@ -141,6 +144,35 @@ export default function ProfilePage() {
         joinDate: profile.join_date ? new Date(profile.join_date).toLocaleDateString() : '',
         preferences,
       });
+
+      const passedIds = new Set<string>();
+      let attempts = 0;
+      let bestScore = 0;
+      const { data: academyRows } = await supabase
+        .from('academy_progress')
+        .select('lesson_id, passed, attempts, best_score')
+        .eq('user_id', profile.id);
+      if (academyRows) {
+        academyRows.forEach((row) => {
+          if (row.passed) passedIds.add(row.lesson_id);
+        });
+        attempts = academyRows.reduce((total, row) => total + (row.attempts || 0), 0);
+        bestScore = academyRows.reduce((highest, row) => Math.max(highest, row.best_score || 0), 0);
+      }
+      if (typeof window !== 'undefined') {
+        for (let index = 0; index < 10; index += 1) {
+          const lessonId = `l1-${String(index + 1).padStart(2, '0')}`;
+          try {
+            const local = JSON.parse(window.localStorage.getItem(`chessarena_academy_${lessonId}`) || '{}');
+            if (local.passed) passedIds.add(lessonId);
+            attempts += local.attempts || 0;
+            bestScore = Math.max(bestScore, local.score || 0);
+          } catch {
+            // Ignore invalid optional local progress.
+          }
+        }
+      }
+      setAcademyProgress({ passed: Math.min(passedIds.size, 10), attempts, bestScore });
 
       setRatingLoading(true);
       try {
@@ -381,6 +413,21 @@ export default function ProfilePage() {
               </div>
             </div>
 
+            <div className="mt-6 rounded-xl border border-accent/20 bg-accent/5 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-text-primary">Chess Academy</h3>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {academyProgress.passed} lessons passed · {academyProgress.attempts} quiz attempts
+                  </p>
+                </div>
+                <div className="text-end">
+                  <p className="text-xs text-text-secondary">Best quiz</p>
+                  <p className="text-lg font-bold text-accent">{academyProgress.bestScore}/20</p>
+                </div>
+              </div>
+            </div>
+
             <p className="text-text-secondary mt-4">
               {' '}
               {' '}
@@ -435,9 +482,9 @@ function PlayerRatingsDashboard({
   onRangeChange: (range: RatingRange) => void;
 }) {
   const { language, tr } = useI18n();
+  const [now] = useState(() => Date.now());
   const rating = ratings.find((entry) => entry.format === format);
   const currentRating = rating?.rating ?? 200;
-  const now = Date.now();
   const formatHistory = history.filter((entry) => entry.format === format);
   const rangeDefinition = RATING_RANGES.find((entry) => entry.value === range);
   const cutoff = rangeDefinition?.days === null || rangeDefinition?.days === undefined

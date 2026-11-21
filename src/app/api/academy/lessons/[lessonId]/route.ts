@@ -36,6 +36,7 @@ function toApiLesson(lessonId: string) {
       choices: question.choices,
       hint: question.hint,
       fen: question.fen,
+      correctAnswer: question.correctAnswer,
     })),
   };
 }
@@ -74,7 +75,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
     const { data: questions, error: questionsError } = await admin
       .from('academy_questions')
-      .select('id, question_number, difficulty, question_type, prompt, choices, hint, fen')
+      .select('id, question_number, difficulty, question_type, prompt, choices, hint, fen, correct_answer')
       .eq('lesson_id', lessonId)
       .order('question_number', { ascending: true });
 
@@ -92,7 +93,13 @@ export async function GET(_request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: 'Academy quiz is not ready yet' }, { status: 503 });
     }
 
-    return NextResponse.json({ lesson, questions });
+    return NextResponse.json({
+      lesson,
+      questions: (questions ?? []).map((question) => ({
+        ...question,
+        correctAnswer: question.correct_answer,
+      })),
+    });
   } catch (error) {
     console.error('Academy lesson request failed:', error);
     if (error instanceof SupabaseAdminConfigurationError) {
