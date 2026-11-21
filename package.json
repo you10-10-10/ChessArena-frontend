@@ -15,6 +15,7 @@
     "socket": "node server/socket.js"
   },
   "dependencies": {
+    "@better-auth/infra": "^0.4.31",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.39.0",
     "better-auth": "^1.7.27",

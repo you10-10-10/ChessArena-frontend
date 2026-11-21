@@ -14,6 +14,8 @@ environment when ready:
 - `BETTER_AUTH_URL` — the canonical app origin, such as
   `http://localhost:3000` for local development.
 - `BETTER_AUTH_SECRET` — a long, random server-only secret.
+- `BETTER_AUTH_API_KEY` — the server-only API key for the Better Auth Infra
+  Dash plugin.
 - `BETTER_AUTH_DATABASE_URL` — a server-only Supabase PostgreSQL connection
   string from the Supabase Dashboard. For Vercel, use the shared transaction
   pooler (usually port `6543`) and require SSL. This is intentionally separate
@@ -26,6 +28,10 @@ environment when ready:
 
 Never put these server-only values in a `NEXT_PUBLIC_` variable or commit real
 credentials.
+
+The Dash plugin is configured in the Better Auth instance, but the
+`/api/auth` route remains disabled unless `BETTER_AUTH_ENABLED=true`. Keep it
+disabled until the database schema and auth rollout are ready.
 
 ## Endpoint and database readiness
 

@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { dash } from '@better-auth/infra';
 import { betterAuth } from 'better-auth';
 import { PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
@@ -19,6 +20,7 @@ function createBetterAuthInstance(
     baseURL,
     secret,
     trustedOrigins: [baseURL],
+    plugins: [dash({ apiKey: process.env.BETTER_AUTH_API_KEY })],
     database: {
       dialect: new PostgresDialect({ pool }),
       type: 'postgres',
