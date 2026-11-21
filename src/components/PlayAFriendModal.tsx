@@ -148,9 +148,13 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
       if (!response.ok) {
         throw new Error(payload.error || 'Failed to process invitation action.');
       }
-      if (action === 'accept' && payload.gameId) {
+      if (action === 'accept') {
+        const gameId = payload.gameId ?? payload.game_id;
+        if (typeof gameId !== 'string' || !gameId) {
+          throw new Error('Invitation was accepted, but no game link was returned. Refresh and try again.');
+        }
         onClose();
-        router.push(`/game/${encodeURIComponent(payload.gameId)}`);
+        router.push(`/game/${encodeURIComponent(gameId)}`);
         return;
       }
       await fetchInvitations();

@@ -201,6 +201,37 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ status: 'accepted', gameId: game.id, fallback: true });
     }
 
+    if (action === 'accept' && data && typeof data === 'object' && !Array.isArray(data)) {
+      const response = data as Record<string, unknown>;
+      const gameId = typeof response.gameId === 'string'
+        ? response.gameId
+        : typeof response.game_id === 'string'
+          ? response.game_id
+          : null;
+      if (gameId) {
+        return NextResponse.json({ ...response, gameId });
+      }
+
+      const admin = createAdminClient();
+      const { data: invitation, error: invitationError } = await admin
+        .from('game_invitations')
+        .select('game_id')
+        .eq('id', invitationId)
+        .eq('receiver_id', user.id)
+        .maybeSingle();
+      if (invitationError) {
+        console.error('Accepted invitation game lookup failed:', invitationError.message);
+        throw new Error('Invitation was accepted, but its game could not be loaded.');
+      }
+      if (typeof invitation?.game_id === 'string') {
+        return NextResponse.json({ ...response, gameId: invitation.game_id });
+      }
+      return NextResponse.json(
+        { error: 'Invitation was accepted, but the game ID was not returned.' },
+        { status: 500 },
+      );
+    }
+
     return NextResponse.json(data);
   } catch (error) {
     console.error('Respond game invitation error:', error);
