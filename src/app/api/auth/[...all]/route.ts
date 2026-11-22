@@ -2,11 +2,14 @@ import { toNextJsHandler } from 'better-auth/next-js';
 import { getBetterAuth } from '@/lib/better-auth/auth';
 
 async function handleAuthRequest(request: Request) {
-  const isDashConfigRequest =
+  const isDashHandshakeRequest =
     request.method === 'GET' &&
-    new URL(request.url).pathname === '/api/auth/dash/config';
+    [
+      '/api/auth/dash/config',
+      '/api/auth/dash/validate',
+    ].includes(new URL(request.url).pathname);
 
-  if (process.env.BETTER_AUTH_ENABLED !== 'true' && !isDashConfigRequest) {
+  if (process.env.BETTER_AUTH_ENABLED !== 'true' && !isDashHandshakeRequest) {
     return new Response(null, { status: 404 });
   }
 

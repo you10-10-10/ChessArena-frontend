@@ -20,13 +20,17 @@ describe('Better Auth route while auth is disabled', () => {
     jest.clearAllMocks();
   });
 
-  it('allows the Dash config handshake endpoint', async () => {
-    const response = await GET(
+  it('allows Dash config and ownership validation endpoints', async () => {
+    const configResponse = await GET(
       new Request('https://example.com/api/auth/dash/config'),
     );
+    const validationResponse = await GET(
+      new Request('https://example.com/api/auth/dash/validate'),
+    );
 
-    expect(response.status).toBe(200);
-    expect(getBetterAuth).toHaveBeenCalledTimes(1);
+    expect(configResponse.status).toBe(200);
+    expect(validationResponse.status).toBe(200);
+    expect(getBetterAuth).toHaveBeenCalledTimes(2);
   });
 
   it('keeps other auth requests disabled', async () => {
