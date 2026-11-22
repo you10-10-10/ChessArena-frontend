@@ -10,11 +10,17 @@ function createBetterAuthInstance(
   baseURL: string,
   secret: string,
   databaseUrl: string,
+  databaseCaCert: string,
 ) {
+  const connectionUrl = new URL(databaseUrl);
+  ['sslmode', 'sslrootcert', 'sslcert', 'sslkey'].forEach((parameter) => {
+    connectionUrl.searchParams.delete(parameter);
+  });
+
   const pool = new Pool({
-    connectionString: databaseUrl,
+    connectionString: connectionUrl.toString(),
     max: 1,
-    ssl: { rejectUnauthorized: true },
+    ssl: { ca: databaseCaCert, rejectUnauthorized: true },
   });
 
   return betterAuth({
@@ -60,18 +66,25 @@ export function getBetterAuth(): BetterAuthInstance {
   const secret = process.env.BETTER_AUTH_SECRET;
   const baseURL = process.env.BETTER_AUTH_URL;
   const databaseUrl = process.env.BETTER_AUTH_DATABASE_URL;
+  const databaseCaCert = process.env.BETTER_AUTH_DATABASE_CA_CERT;
 
-  if (!secret || !baseURL || !databaseUrl) {
+  if (!secret || !baseURL || !databaseUrl || !databaseCaCert) {
     const missingVariables = [
       !secret && 'BETTER_AUTH_SECRET',
       !baseURL && 'BETTER_AUTH_URL',
       !databaseUrl && 'BETTER_AUTH_DATABASE_URL',
+      !databaseCaCert && 'BETTER_AUTH_DATABASE_CA_CERT',
     ].filter((name): name is string => Boolean(name));
     throw new Error(
       `Better Auth is enabled but is missing environment variables: ${missingVariables.join(', ')}`,
     );
   }
 
-  authInstance = createBetterAuthInstance(baseURL, secret, databaseUrl);
+  authInstance = createBetterAuthInstance(
+    baseURL,
+    secret,
+    databaseUrl,
+    databaseCaCert,
+  );
   return authInstance;
 }

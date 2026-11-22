@@ -20,6 +20,11 @@ environment when ready:
   string from the Supabase Dashboard. For Vercel, use the shared transaction
   pooler (usually port `6543`) and require SSL. This is intentionally separate
   from the existing `DATABASE_URL` used by the project's migration script.
+- `BETTER_AUTH_DATABASE_CA_CERT` — the Supabase database root CA certificate
+  from **Project Settings → Database → SSL Configuration**. Paste the PEM
+  certificate as a server-only Vercel environment variable. The auth pool uses
+  it to validate the database certificate; SSL-related query parameters in the
+  connection string are removed so they cannot override this CA configuration.
 - `RESEND_API_KEY` — a private Resend API key.
 - `RESEND_FROM_EMAIL` — a sender address authorized by Resend. Email sending
   will fail with a clear error until these two Resend settings are configured;
