@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import Link from 'next/link';
-import { Play, Trophy, Puzzle, Award, ArrowRight, BookOpen, Radio, Video, type LucideIcon } from 'lucide-react';
+import { Play, Trophy, Award, ArrowRight, BookOpen, Radio, Video, type LucideIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useI18n } from '@/lib/i18n/context';
 

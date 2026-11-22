@@ -63,6 +63,8 @@ export default function SocialPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const loadFriends = useCallback(async () => {
     if (!userId || !supabase) {
@@ -231,10 +233,19 @@ export default function SocialPage() {
     setActionId(player.id);
     setError(null);
     try {
-      const { error: insertError } = await supabase
-        .from('friendships')
-        .insert({ user_id: user.id, friend_id: player.id, status: 'pending' });
-      if (insertError) throw insertError;
+      const { data, error: requestError } = await supabase.rpc('send_friend_request', {
+        p_friend_id: player.id,
+      });
+      if (requestError) throw requestError;
+      if (data?.status === 'incoming_request') {
+        setActionNotice('This player already sent you a friend request.');
+      } else if (data?.status === 'already_friends') {
+        setActionNotice('You are already friends.');
+      } else if (data?.status === 'already_requested') {
+        setActionNotice('Friend request already sent.');
+      } else {
+        setActionNotice(`Friend request sent to ${player.username}.`);
+      }
       setSearchResults((current) => current.filter((result) => result.id !== player.id));
       await loadFriends();
     } catch (actionError) {
@@ -250,17 +261,50 @@ export default function SocialPage() {
     setActionId(friend.relationshipId);
     setError(null);
     try {
-      const { error: updateError } = await supabase
-        .from('friendships')
-        .update({ status: 'accepted' })
-        .eq('id', friend.relationshipId);
-      if (updateError) throw updateError;
+      const { error: responseError } = await supabase.rpc('respond_friend_request', {
+        p_relationship_id: friend.relationshipId,
+        p_accept: true,
+      });
+      if (responseError) throw responseError;
+      setActionNotice(`You are now friends with ${friend.username}.`);
       await loadFriends();
     } catch (actionError) {
       console.error('Accepting friend request failed:', actionError);
       setError(actionError instanceof Error ? actionError.message : 'Unable to accept friend request.');
     } finally {
       setActionId(null);
+    }
+  };
+
+  const handleChallenge = async (friend: FriendRow) => {
+    if (!user) {
+      setError('Sign in to challenge a friend.');
+      return;
+    }
+    setChallengeId(friend.id);
+    setError(null);
+    setActionNotice(null);
+    try {
+      const response = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipientUsername: friend.username,
+          gameMode: 'standard',
+          timeControl: '3+2',
+          selectedColor: 'random',
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || 'Unable to send friend challenge.');
+      }
+      setActionNotice(`Challenge sent to ${friend.username}.`);
+    } catch (challengeError) {
+      console.error('Friend challenge failed:', challengeError);
+      setError(challengeError instanceof Error ? challengeError.message : 'Unable to send friend challenge.');
+    } finally {
+      setChallengeId(null);
     }
   };
 
@@ -285,6 +329,7 @@ export default function SocialPage() {
         <Link href="/clubs" className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">{tr('Explore clubs')}</Link>
       </div>
       {error && <div role="alert" className="mb-5 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-300">{tr(error)}</div>}
+      {actionNotice && <div role="status" className="mb-5 rounded-lg border border-green-500/30 bg-green-500/10 p-4 text-green-300">{tr(actionNotice)}</div>}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="rounded-xl border border-text-secondary/10 bg-background-secondary p-6">
@@ -315,17 +360,27 @@ export default function SocialPage() {
                     </button>
                   )}
                   {friend.relationshipStatus === 'accepted' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFriendId(friend.id);
-                        setChatError(null);
-                      }}
-                      aria-pressed={selectedFriendId === friend.id}
-                      className="rounded-lg border border-accent/30 px-3 py-2 text-sm text-accent"
-                    >
-                      {tr(selectedFriendId === friend.id ? 'Chat open' : 'Message')}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleChallenge(friend)}
+                        disabled={challengeId === friend.id}
+                        className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {challengeId === friend.id ? tr('Sending…') : tr('Challenge')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFriendId(friend.id);
+                          setChatError(null);
+                        }}
+                        aria-pressed={selectedFriendId === friend.id}
+                        className="rounded-lg border border-accent/30 px-3 py-2 text-sm text-accent"
+                      >
+                        {tr(selectedFriendId === friend.id ? 'Chat open' : 'Message')}
+                      </button>
+                    </div>
                   )}
                 </li>
               ))}

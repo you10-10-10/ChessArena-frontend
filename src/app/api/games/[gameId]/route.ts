@@ -92,11 +92,35 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
       console.error('Game has an invalid persisted FEN:', { gameId, userId, stage: 'validate_persisted_fen' });
       return NextResponse.json({ error: 'Game data is invalid' }, { status: 500 });
     }
+    const participantIds = [game.white_player_id, game.black_player_id].filter(
+      (participantId): participantId is string => typeof participantId === 'string'
+    );
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, username, rating')
+      .in('id', participantIds);
+    if (profilesError) {
+      console.error('Participant profile lookup failed:', {
+        gameId,
+        userId,
+        stage: 'load_participant_profiles',
+        code: profilesError.code,
+        message: profilesError.message,
+      });
+      return NextResponse.json({ error: 'Player identities could not be loaded.' }, { status: 500 });
+    }
+    const profileById = new Map(
+      (profiles ?? []).map((profile) => [profile.id, profile])
+    );
+    const whiteProfile = profileById.get(game.white_player_id);
+    const blackProfile = profileById.get(game.black_player_id);
 
     return NextResponse.json({
       id: game.id,
       whitePlayerId: game.white_player_id,
       blackPlayerId: game.black_player_id,
+      whiteName: whiteProfile?.username ?? 'White Player',
+      blackName: blackProfile?.username ?? 'Black Player',
       whiteRating: game.white_rating,
       blackRating: game.black_rating,
       whiteRatingChange: game.white_rating_change,

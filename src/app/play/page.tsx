@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { supabase } from '@/lib/supabase/client';
 import { useI18n } from '@/lib/i18n/context';
 import ChessBoard from '@/components/ChessBoard';
 import PlayAFriendModal from '@/components/PlayAFriendModal';
@@ -179,10 +180,46 @@ function PlayContent() {
       }
     };
 
-    const intervalId = window.setInterval(() => void checkMatch(), 2000);
+    const intervalId = window.setInterval(() => void checkMatch(), 1000);
     return () => {
       active = false;
       window.clearInterval(intervalId);
+    };
+  }, [matchStatus, router, user]);
+
+  useEffect(() => {
+    if (!supabase || !user || matchStatus !== 'queued') return;
+    const realtimeClient = supabase;
+    const channel = realtimeClient
+      .channel(`matchmaking:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'matchmaking_queue',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => void fetch('/api/matchmaking', { cache: 'no-store' })
+          .then((response) => response.json())
+          .then((payload) => {
+            if (typeof payload.gameId === 'string') {
+              setMatchStatus('idle');
+              router.push(`/game/${encodeURIComponent(payload.gameId)}`);
+            }
+          })
+          .catch((realtimeError) => {
+            console.error('Realtime matchmaking status refresh failed:', {
+              endpoint: '/api/matchmaking',
+              userId: user.id,
+              message: realtimeError instanceof Error ? realtimeError.message : 'Unknown error',
+            });
+          }),
+      )
+      .subscribe();
+
+    return () => {
+      void realtimeClient.removeChannel(channel);
     };
   }, [matchStatus, router, user]);
 

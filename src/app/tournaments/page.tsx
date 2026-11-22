@@ -75,6 +75,7 @@ export default function TournamentsPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [startingRoundId, setStartingRoundId] = useState<string | null>(null);
   const [invitingId, setInvitingId] = useState<string | null>(null);
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [inviteUsernames, setInviteUsernames] = useState<Record<string, string>>({});
@@ -319,6 +320,39 @@ export default function TournamentsPage() {
       setError(getTournamentActionError(joinError, 'Unable to register for tournament.'));
     } finally {
       setJoiningId(null);
+    }
+  };
+
+  const handleStartRound = async (tournament: Tournament) => {
+    if (!user || !supabase) {
+      setError('Sign in as the tournament organizer.');
+      return;
+    }
+    if (!['swiss', 'round_robin'].includes(tournament.format)) {
+      setError('Arena and knockout round generation are not implemented yet.');
+      return;
+    }
+
+    setStartingRoundId(tournament.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const { data, error: startError } = await supabase.rpc('start_tournament_round', {
+        p_tournament_id: tournament.id,
+      });
+      if (startError) throw startError;
+      const roundNumber = typeof data?.roundNumber === 'number'
+        ? data.roundNumber
+        : null;
+      setNotice(roundNumber
+        ? `Round ${roundNumber} started with ${data.matchCount ?? 0} matches.`
+        : 'Tournament round started.');
+      await loadTournaments();
+    } catch (startError) {
+      console.error('Unable to start tournament round:', startError);
+      setError(getTournamentActionError(startError, 'Unable to start tournament round.'));
+    } finally {
+      setStartingRoundId(null);
     }
   };
 
@@ -618,6 +652,18 @@ export default function TournamentsPage() {
                     >
                       {tr(joiningId === tournament.id ? 'Registering…' : closed ? 'Registration closed' : 'Register')}
                     </button>
+                    {user && tournament.organizerId === user.id &&
+                      ['swiss', 'round_robin'].includes(tournament.format) &&
+                      tournament.status !== 'completed' && (
+                        <button
+                          type="button"
+                          onClick={() => void handleStartRound(tournament)}
+                          disabled={startingRoundId === tournament.id}
+                          className="mt-3 w-full rounded-lg border border-accent/30 py-2.5 font-semibold text-accent disabled:opacity-50"
+                        >
+                          {startingRoundId === tournament.id ? tr('Starting round…') : tr('Start next round')}
+                        </button>
+                    )}
                     {user && (tournament.isParticipant || tournament.organizerId === user.id) && (
                       <form onSubmit={(event) => void handleInvite(event, tournament)} className="mt-4 flex gap-2">
                         <input

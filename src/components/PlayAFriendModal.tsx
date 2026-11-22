@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n/context';
-import { Search, UserPlus, Clock, X, Check, AlertCircle, Shield, Sparkles } from 'lucide-react';
+import { Search, UserPlus, Clock, X, Check, AlertCircle, Sparkles } from 'lucide-react';
 
 interface PlayerProfile {
   id: string;
@@ -48,7 +48,6 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
 
   const [sentInvitations, setSentInvitations] = useState<GameInvitation[]>([]);
   const [receivedInvitations, setReceivedInvitations] = useState<GameInvitation[]>([]);
-  const [loadingInvites, setLoadingInvites] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -122,7 +121,7 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
         } else {
           setSearchResults([]);
         }
-      } catch (err) {
+      } catch {
         setSearchResults([]);
       } finally {
         setSearching(false);

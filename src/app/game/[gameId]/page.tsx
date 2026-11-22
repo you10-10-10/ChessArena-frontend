@@ -13,6 +13,10 @@ interface GameResponse {
   id: string;
   whitePlayerId: string;
   blackPlayerId: string;
+  whiteName: string;
+  blackName: string;
+  whiteRating: number;
+  blackRating: number;
   status: 'waiting' | 'in_progress' | 'completed' | 'abandoned';
   result: string | null;
   whiteRatingChange: number | null;
@@ -263,6 +267,10 @@ export default function GamePage() {
             allowReset={false}
             allowUndo={false}
             isInputEnabled={game.status === 'in_progress' && !savingMove}
+            whiteName={game.whiteName}
+            blackName={game.blackName}
+            whiteRating={game.whiteRating}
+            blackRating={game.blackRating}
           />
           {savingMove && <p role="status" className="mt-2 text-center text-sm text-text-secondary">{tr('Saving move…')}</p>}
 
@@ -283,10 +291,14 @@ export default function GamePage() {
           <div className="rounded-lg border border-text-secondary/10 bg-background-secondary p-4">
             <h2 className="mb-4 font-semibold text-text-primary">{tr('Players')}</h2>
             <p className="rounded-lg bg-background-tertiary p-3 text-text-primary">
-              {tr('White')} {game.whitePlayerId === user?.id ? `(${tr('you')})` : ''}
+              <span className="font-semibold">{game.whiteName}</span>
+              <span className="ml-2 text-xs text-text-secondary">{tr('Rating')}: {game.whiteRating}</span>
+              <span className="ml-2 text-xs text-text-secondary">· {tr('White')} {game.whitePlayerId === user?.id ? `(${tr('you')})` : ''}</span>
             </p>
             <p className="mt-3 rounded-lg bg-background-tertiary p-3 text-text-primary">
-              {tr('Black')} {game.blackPlayerId === user?.id ? `(${tr('you')})` : ''}
+              <span className="font-semibold">{game.blackName}</span>
+              <span className="ml-2 text-xs text-text-secondary">{tr('Rating')}: {game.blackRating}</span>
+              <span className="ml-2 text-xs text-text-secondary">· {tr('Black')} {game.blackPlayerId === user?.id ? `(${tr('you')})` : ''}</span>
             </p>
           </div>
 

@@ -71,6 +71,7 @@ describe('online game result persistence', () => {
     const gameQuery = {
       select: jest.fn(),
       eq: jest.fn(),
+      in: jest.fn(),
       maybeSingle: jest.fn().mockResolvedValue({
         data: {
           id: gameId,
@@ -93,6 +94,13 @@ describe('online game result persistence', () => {
     };
     gameQuery.select.mockReturnValue(gameQuery);
     gameQuery.eq.mockReturnValue(gameQuery);
+    gameQuery.in.mockResolvedValue({
+      data: [
+        { id: whitePlayerId, username: 'WhitePlayer', rating: 1200 },
+        { id: blackPlayerId, username: 'BlackPlayer', rating: 1200 },
+      ],
+      error: null,
+    });
     mockedCreateServerClient.mockResolvedValue({
       auth: {
         getUser: jest.fn().mockResolvedValue({

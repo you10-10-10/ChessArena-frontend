@@ -19,8 +19,17 @@ export async function GET() {
 
     const { data, error } = await client.rpc('matchmaking_status');
     if (error) {
-      console.error('Matchmaking status lookup failed:', error.message);
-      return NextResponse.json({ error: 'Matchmaking is temporarily unavailable' }, { status: 503 });
+      console.error('Matchmaking status lookup failed:', {
+        endpoint: '/api/matchmaking',
+        userId: user.id,
+        stage: 'matchmaking_status',
+        code: error.code,
+        message: error.message,
+      });
+      return NextResponse.json(
+        { error: 'Matchmaking is temporarily unavailable', code: error.code ?? null },
+        { status: 503 },
+      );
     }
     return NextResponse.json(data);
   } catch (error) {
@@ -56,8 +65,21 @@ export async function POST(request: NextRequest) {
         p_time_control: body.timeControl,
       });
       if (error) {
-        console.error('Matchmaking join failed:', error.message);
-        return NextResponse.json({ error: 'Matchmaking is temporarily unavailable' }, { status: 503 });
+        console.error('Matchmaking join failed:', {
+          endpoint: '/api/matchmaking',
+          userId: user.id,
+          stage: 'join_matchmaking',
+          timeControl: body.timeControl,
+          code: error.code,
+          message: error.message,
+        });
+        if (error.code === '40001') {
+          return NextResponse.json({ error: 'You are already in an active game.', code: error.code }, { status: 409 });
+        }
+        return NextResponse.json(
+          { error: 'Matchmaking is temporarily unavailable', code: error.code ?? null },
+          { status: 503 },
+        );
       }
       return NextResponse.json(data);
     }

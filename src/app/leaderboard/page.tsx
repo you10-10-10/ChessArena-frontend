@@ -31,13 +31,14 @@ export default function LeaderboardPage() {
         throw new Error('Supabase is not configured. Set the public Supabase URL and key.');
       }
 
-      let { data, error: queryError } = await supabase
+      const { data: leaderboardData, error: queryError } = await supabase
         .from('leaderboard')
         .select('*')
         .order('rating', { ascending: false })
         .limit(50);
 
       if (queryError) throw queryError;
+      let data = leaderboardData;
 
       // Fallback to profiles if leaderboard is empty
       if (!data || data.length === 0) {
