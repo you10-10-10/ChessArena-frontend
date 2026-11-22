@@ -38,6 +38,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_friendships_canonical_pair
 
 ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Friendships public" ON public.friendships;
 DROP POLICY IF EXISTS "Users read own friendships" ON public.friendships;
 CREATE POLICY "Users read own friendships" ON public.friendships FOR SELECT
   USING (auth.uid() = user_id OR auth.uid() = friend_id);
@@ -160,3 +161,5 @@ REVOKE ALL ON FUNCTION public.send_friend_request(UUID) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.respond_friend_request(UUID, BOOLEAN) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.send_friend_request(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.respond_friend_request(UUID, BOOLEAN) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';

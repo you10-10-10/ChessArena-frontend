@@ -41,13 +41,13 @@ npm start
 
 ## Database
 
-Use Supabase for persistent data storage. Copy `.env.example` to `.env.local`, then set the Supabase project URL, public key, service-role key, and direct Postgres `DATABASE_URL`. The database migration uses the direct connection string and applies `sql/schema.sql` transactionally:
+Use Supabase for persistent data storage. Copy `.env.example` to `.env.local`, then set the Supabase project URL, public key, service-role key, and direct Postgres `DATABASE_URL`. The database migration uses the direct connection string and transactionally applies `sql/schema.sql` and `sql/fix_friendships.sql`:
 
 ```bash
 npm run db:migrate
 ```
 
-Never expose `SUPABASE_SERVICE_KEY` or `DATABASE_URL` to the browser or commit them. The schema migration creates tables, indexes, profile/leaderboard triggers, matchmaking/tournament RPCs, server-only transactional game-result/Elo updates, row-level security policies, and two curated beginner mate-in-one puzzles. It also separates private preferences and hides puzzle solutions from public database roles. Do not run it with a publishable/anon key.
+Never expose `SUPABASE_SERVICE_KEY` or `DATABASE_URL` to the browser or commit them. The schema migrations create tables, indexes, profile/leaderboard triggers, matchmaking/tournament/friendship RPCs, server-only transactional game-result/Elo updates, row-level security policies, and two curated beginner mate-in-one puzzles. The friendship migration blocks self-friendships and duplicate/reverse-direction requests without deleting existing friendship rows. It also separates private preferences and hides puzzle solutions from public database roles. Do not run it with a publishable/anon key.
 
 For an existing Supabase project where the `games` table predates these columns, existing accounts are missing profiles, or you want the new club/tournament features, private friend messaging, and starter puzzles, apply `sql/fix_matchmaking_and_seed_puzzles.sql` in the Supabase SQL Editor. This compatibility patch is safe to rerun. Private messages are limited to accepted, non-blocked friendships and refresh automatically; real-time delivery is not configured.
 

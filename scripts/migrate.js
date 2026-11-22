@@ -13,16 +13,21 @@ async function runMigrations() {
     );
   }
 
-  const schemaPath = path.join(__dirname, '../sql/schema.sql');
-  const schema = fs.readFileSync(schemaPath, 'utf8');
+  const migrationPaths = [
+    path.join(__dirname, '../sql/schema.sql'),
+    path.join(__dirname, '../sql/fix_friendships.sql'),
+  ];
+  const migrations = migrationPaths.map(filePath => fs.readFileSync(filePath, 'utf8'));
   const client = new Client({ connectionString });
 
   await client.connect();
   try {
     await client.query('BEGIN');
-    await client.query(schema);
+    for (const migration of migrations) {
+      await client.query(migration);
+    }
     await client.query('COMMIT');
-    console.log('ChessArena database schema applied successfully.');
+    console.log('ChessArena database schema and friendship RPCs applied successfully.');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
