@@ -87,7 +87,7 @@ describe('Play a Friend game navigation', () => {
           time_control: '3+2',
           expires_at: new Date(Date.now() + 60_000).toISOString(),
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         }],
       }),
     }));

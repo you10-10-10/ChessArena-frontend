@@ -76,9 +76,7 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
       const accepted = sent.find((invitation) =>
         invitation.status === 'accepted' &&
         typeof invitation.game_id === 'string' &&
-        invitation.game_id.length > 0 &&
-        Number.isFinite(Date.parse(invitation.updated_at)) &&
-        Date.now() - Date.parse(invitation.updated_at) < 30_000
+        invitation.game_id.length > 0
       );
       const acceptedGameId = accepted?.game_id;
       if (accepted && typeof acceptedGameId === 'string' && redirectedInvitationIdRef.current !== accepted.id) {
@@ -93,14 +91,12 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
     }
   }, [router, user]);
 
-  const hasPendingSentInvitation = sentInvitations.some((invitation) => invitation.status === 'pending');
-
   useEffect(() => {
-    if (!user || (!isOpen && !hasPendingSentInvitation)) return;
+    if (!user) return;
     void fetchInvitations();
     const interval = setInterval(() => void fetchInvitations(), 3000);
     return () => clearInterval(interval);
-  }, [fetchInvitations, hasPendingSentInvitation, isOpen, user]);
+  }, [fetchInvitations, user]);
 
   useEffect(() => {
     if (!searchQuery || searchQuery.trim().length < 2) {
