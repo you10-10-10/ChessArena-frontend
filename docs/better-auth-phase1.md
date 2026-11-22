@@ -29,17 +29,20 @@ environment when ready:
 Never put these server-only values in a `NEXT_PUBLIC_` variable or commit real
 credentials.
 
-The Dash plugin is configured in the Better Auth instance, but the
-`/api/auth` route remains disabled unless `BETTER_AUTH_ENABLED=true`. Keep it
-disabled until the database schema and auth rollout are ready.
+The Dash plugin is configured in the Better Auth instance. While
+`BETTER_AUTH_ENABLED` is not `true`, only the plugin's
+`GET /api/auth/dash/config` endpoint is available for its API-key-protected
+dashboard handshake; other Better Auth requests remain disabled. This allows
+Dash ownership verification without enabling sign-in or account management.
 
 ## Endpoint and database readiness
 
-The prepared endpoint is `/api/auth/[...all]`. It returns 404 unless
-`BETTER_AUTH_ENABLED=true`; do not enable it yet. When enabled, Better Auth
-expects its tables in the PostgreSQL `better_auth` schema, which has **not**
-been created or migrated as part of Phase 1. Requests that require the database
-will not work until a later, separately approved database phase is complete.
+The prepared endpoint is `/api/auth/[...all]`. Requests other than the Dash
+config handshake return 404 unless `BETTER_AUTH_ENABLED=true`. When enabled,
+Better Auth expects its tables in the PostgreSQL `better_auth` schema, which has
+**not** been created or migrated as part of Phase 1. Requests that require the
+database will not work until a later, separately approved database phase is
+complete.
 
 The existing Supabase Auth integration remains the active authentication
 system. In particular, existing profiles reference UUIDs in `auth.users`, and
