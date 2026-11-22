@@ -1,98 +1,145 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '@/lib/auth';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { OAuthButtons } from '@/components/auth/OAuthButtons';
+import { PasswordField } from '@/components/auth/PasswordField';
+import { useAuth, type OAuthProvider } from '@/lib/auth';
+import { getPublicSignInError, normalizeEmail } from '@/lib/auth/validation';
 import { useI18n } from '@/lib/i18n/context';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { user, loading: authLoading, signIn, signInWithOAuth } = useAuth();
   const { tr } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<'email' | OAuthProvider | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace('/play');
+    }
+  }, [authLoading, router, user]);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy) return;
+
+    setBusy('email');
     setError('');
+    try {
+      const result = await signIn(normalizeEmail(email), password);
+      if (result.error) {
+        setError(getPublicSignInError());
+        setBusy(null);
+        return;
+      }
 
-    const result = await signIn(email, password);
-    if (result.error) {
-      setError(result.error.message);
-      setLoading(false);
-    } else {
-      router.push('/');
+      router.replace('/play');
       router.refresh();
+    } catch {
+      setError(getPublicSignInError());
+      setBusy(null);
+    }
+  };
+
+  const handleOAuth = async (provider: OAuthProvider) => {
+    if (busy) return;
+    setBusy(provider);
+    setError('');
+    try {
+      const result = await signInWithOAuth(provider);
+      if (result.error) {
+        setError(`Unable to start ${provider === 'google' ? 'Google' : 'GitHub'} sign-in. Please try again.`);
+        setBusy(null);
+      }
+    } catch {
+      setError(`Unable to start ${provider === 'google' ? 'Google' : 'GitHub'} sign-in. Please try again.`);
+      setBusy(null);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-background-secondary rounded-xl p-8 border border-text-secondary/15 shadow-card">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-text-primary mb-2">{tr('Welcome Back')}</h1>
-          <p className="text-text-secondary">{tr('Sign in to your ChessArena account')}</p>
+    <AuthShell
+      title={tr('Welcome Back')}
+      description={tr('Sign in to your ChessArena account')}
+    >
+      <div className="mt-7 space-y-5">
+        {error && (
+          <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+            {tr(error)}
+          </div>
+        )}
+
+        <OAuthButtons
+          busy={busy === 'google' || busy === 'github' ? busy : null}
+          disabled={busy !== null}
+          onSelect={handleOAuth}
+        />
+
+        <div className="flex items-center gap-3 text-xs text-text-muted">
+          <span className="h-px flex-1 bg-text-secondary/15" />
+          <span>{tr('or continue with email')}</span>
+          <span className="h-px flex-1 bg-text-secondary/15" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div role="alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-              {tr(error)}
-            </div>
-          )}
-
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-text-secondary mb-1">
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-text-secondary">
               {tr('Email')}
             </label>
             <input
               id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-background-tertiary border border-text-secondary/20 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              onChange={(event) => setEmail(event.target.value)}
+              className="w-full rounded-xl border border-text-secondary/20 bg-background-tertiary px-4 py-3 text-text-primary transition placeholder:text-text-muted focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
               required
               autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              disabled={busy !== null}
             />
           </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-text-secondary mb-1">
-              {tr('Password')}
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-background-tertiary border border-text-secondary/20 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-              required
-              autoComplete="current-password"
-            />
+          <PasswordField
+            id="password"
+            label={tr('Password')}
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+            disabled={busy !== null}
+          />
+
+          <div className="flex justify-end">
+            <Link href="/auth/reset-password" className="text-sm font-medium text-accent transition hover:text-accent-hover">
+              {tr('Forgot password?')}
+            </Link>
           </div>
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg transition-colors disabled:opacity-50 shadow-lg shadow-accent/20"
+            disabled={busy !== null || !email.trim() || !password}
+            className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-white shadow-lg shadow-accent/15 transition hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? tr('Signing in...') : tr('Sign In')}
+            {busy === 'email' ? tr('Signing in...') : tr('Sign In')}
           </button>
         </form>
 
-        <div className="mt-6 text-center text-text-secondary text-sm">
-          <p>{tr("Don't have an account?")} <Link href="/auth/signup" className="text-accent hover:text-accent-hover font-medium">{tr('Sign up')}</Link></p>
-          <p className="mt-2"><Link href="/auth/reset-password" className="text-accent hover:text-accent-hover">{tr('Forgot password?')}</Link></p>
-        </div>
-
-        <div className="mt-6 text-center">
-          <Link href="/" className="text-text-secondary hover:text-text-primary text-sm">← {tr('Back to Home')}</Link>
-        </div>
+        <p className="text-center text-sm text-text-secondary">
+          {tr("Don't have an account?")}{' '}
+          <Link href="/auth/signup" className="font-semibold text-accent transition hover:text-accent-hover">
+            {tr('Sign up')}
+          </Link>
+        </p>
+        <Link href="/" className="block text-center text-sm text-text-muted transition hover:text-text-primary">
+          {tr('Back to Home')}
+        </Link>
       </div>
-    </div>
+    </AuthShell>
   );
 }

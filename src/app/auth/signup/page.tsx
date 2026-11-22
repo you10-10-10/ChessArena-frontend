@@ -1,14 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useAuth } from '@/lib/auth';
+import { AuthShell } from '@/components/auth/AuthShell';
+import { OAuthButtons } from '@/components/auth/OAuthButtons';
+import { PasswordField } from '@/components/auth/PasswordField';
+import { PasswordRequirements } from '@/components/auth/PasswordRequirements';
+import { useAuth, type OAuthProvider } from '@/lib/auth';
+import { supabase } from '@/lib/supabase/client';
+import {
+  getPublicSignUpError,
+  isStrongPassword,
+  normalizeEmail,
+  normalizeUsername,
+  validateUsername,
+} from '@/lib/auth/validation';
 import { useI18n } from '@/lib/i18n/context';
+
+type UsernameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'error';
+
+const usernameStatusCopy: Record<UsernameStatus, string> = {
+  idle: '',
+  checking: 'Checking username…',
+  available: 'Available',
+  taken: 'Already taken',
+  invalid: 'Please enter a valid username.',
+  error: 'Could not check username availability. Try again.',
+};
 
 export default function SignUpPage() {
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { user, loading: authLoading, signUp, signInWithOAuth } = useAuth();
   const { tr } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,159 +39,269 @@ export default function SignUpPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<'email' | OAuthProvider | null>(null);
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
+  const normalizedUsername = useMemo(() => normalizeUsername(username), [username]);
+  const usernameError = useMemo(() => validateUsername(username), [username]);
+  const passwordIsStrong = isStrongPassword(password);
+  const passwordsMatch = Boolean(confirmPassword) && password === confirmPassword;
+  const passwordsMismatch = Boolean(confirmPassword) && password !== confirmPassword;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace('/play');
+    }
+  }, [authLoading, router, user]);
+
+  useEffect(() => {
+    if (!normalizedUsername) {
+      setUsernameStatus('idle');
+      return;
+    }
+    if (usernameError) {
+      setUsernameStatus('invalid');
+      return;
+    }
+    if (!supabase) {
+      setUsernameStatus('error');
+      return;
+    }
+
+    const client = supabase;
+    let active = true;
+    setUsernameStatus('checking');
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const { data, error: queryError } = await client
+            .from('profiles')
+            .select('id')
+            .ilike('username', normalizedUsername)
+            .limit(1)
+            .maybeSingle();
+          if (!active) return;
+          if (queryError) {
+            setUsernameStatus('error');
+            return;
+          }
+          setUsernameStatus(data ? 'taken' : 'available');
+        } catch {
+          if (active) setUsernameStatus('error');
+        }
+      })();
+    }, 300);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [normalizedUsername, usernameError]);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy) return;
     setError('');
     setSuccess('');
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      setLoading(false);
+    if (usernameError) {
+      setError(usernameError);
+      return;
+    }
+    if (usernameStatus !== 'available') {
+      setError(usernameStatus === 'taken' ? 'That username is already taken.' : 'Wait until username availability is confirmed.');
+      return;
+    }
+    if (!passwordIsStrong) {
+      setError('Password does not meet the security requirements.');
+      return;
+    }
+    if (!passwordsMatch) {
+      setError('Passwords do not match.');
       return;
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      setLoading(false);
-      return;
-    }
-
-    if (username.length < 3) {
-      setError('Username must be at least 3 characters');
-      setLoading(false);
-      return;
-    }
-
-    const result = await signUp(email, password, username);
-    if (result.error) {
-      const message = result.error.message;
-      setError(
-        /rate.?limit|too many requests/i.test(message)
-          ? 'Supabase has temporarily limited signup emails. Please wait before trying again, or sign in if you already created an account.'
-          : message
-      );
-      setLoading(false);
-    } else if (result.needsEmailConfirmation) {
-      setSuccess('Account created. Check your email for a confirmation link before signing in.');
-      setLoading(false);
-    } else {
-      router.push('/play');
-      router.refresh();
+    setBusy('email');
+    try {
+      const result = await signUp(normalizeEmail(email), password, normalizedUsername);
+      if (result.error) {
+        setError(getPublicSignUpError(result.error));
+        setBusy(null);
+      } else if (result.needsEmailConfirmation) {
+        setSuccess('If this email can be registered, check your inbox for a confirmation link. You can sign in or reset your password if you already have an account.');
+        setBusy(null);
+      } else {
+        router.replace('/play');
+        router.refresh();
+      }
+    } catch (signupError) {
+      setError(getPublicSignUpError(
+        signupError instanceof Error ? signupError : new Error('Unable to create account.'),
+      ));
+      setBusy(null);
     }
   };
 
+  const handleOAuth = async (provider: OAuthProvider) => {
+    if (busy) return;
+    setBusy(provider);
+    setError('');
+    setSuccess('');
+    try {
+      const result = await signInWithOAuth(provider);
+      if (result.error) {
+        setError(`Unable to start ${provider === 'google' ? 'Google' : 'GitHub'} sign-in. Please try again.`);
+        setBusy(null);
+      }
+    } catch {
+      setError(`Unable to start ${provider === 'google' ? 'Google' : 'GitHub'} sign-in. Please try again.`);
+      setBusy(null);
+    }
+  };
+
+  const statusColor = {
+    idle: 'text-text-muted',
+    checking: 'text-text-secondary',
+    available: 'text-accent',
+    taken: 'text-red-300',
+    invalid: 'text-red-300',
+    error: 'text-amber-300',
+  }[usernameStatus];
+
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-background-secondary rounded-xl p-8 border border-text-secondary/10">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-text-primary mb-2">{tr('Create Account')}</h1>
-          <p className="text-text-secondary">{tr('Join ChessArena and start playing')}</p>
+    <AuthShell
+      title={tr('Create Account')}
+      description={tr('Join ChessArena and start playing')}
+    >
+      <div className="mt-7 space-y-5">
+        {error && (
+          <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+            {tr(error)}
+          </div>
+        )}
+        {success && (
+          <div role="status" className="rounded-xl border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-300">
+            {tr(success)}
+          </div>
+        )}
+
+        <OAuthButtons
+          busy={busy === 'google' || busy === 'github' ? busy : null}
+          disabled={busy !== null}
+          onSelect={handleOAuth}
+        />
+
+        <div className="flex items-center gap-3 text-xs text-text-muted">
+          <span className="h-px flex-1 bg-text-secondary/15" />
+          <span>{tr('or sign up with email')}</span>
+          <span className="h-px flex-1 bg-text-secondary/15" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm" role="alert">
-              <p>{tr(error)}</p>
-              {/rate.?limit|too many requests/i.test(error) && (
-                <div className="mt-3 flex flex-wrap gap-3">
-                  <Link href="/auth/login" className="underline hover:text-red-300">{tr('Sign in')}</Link>
-                  <Link href="/play" className="underline hover:text-red-300">{tr('Try local play without an account')}</Link>
-                </div>
-              )}
-            </div>
-          )}
-          {success && (
-            <div role="status" className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-300">
-              <p>{tr(success)}</p>
-              <Link href="/auth/login" className="mt-2 inline-block underline hover:text-green-200">{tr('Go to sign in')}</Link>
-            </div>
-          )}
-
           <div>
-            <label htmlFor="username" className="block text-sm font-medium text-text-secondary mb-1">
+            <label htmlFor="username" className="mb-1.5 block text-sm font-medium text-text-secondary">
               {tr('Username')}
             </label>
             <input
               id="username"
               type="text"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 bg-background-tertiary border border-text-secondary/20 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              onChange={(event) => {
+                setUsername(event.target.value);
+                setError('');
+              }}
+              className="w-full rounded-xl border border-text-secondary/20 bg-background-tertiary px-4 py-3 text-text-primary transition placeholder:text-text-muted focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
               required
               minLength={3}
               maxLength={20}
-              pattern="^[a-zA-Z0-9_]+$"
+              pattern="^[A-Za-z0-9_]+$"
               autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              disabled={busy !== null}
+              aria-invalid={Boolean(username && usernameError) || usernameStatus === 'taken'}
+              aria-describedby="username-help username-status"
             />
-            <p className="text-xs text-text-secondary mt-1">{tr('3-20 characters, letters, numbers, and underscores only')}</p>
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-xs">
+              <span id="username-help" className="text-text-muted">{tr('3-20 characters, letters, numbers, and underscores only')}</span>
+              <span id="username-status" role="status" className={statusColor}>
+                {tr(usernameError ?? usernameStatusCopy[usernameStatus])}
+              </span>
+            </div>
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-text-secondary mb-1">
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-text-secondary">
               {tr('Email')}
             </label>
             <input
               id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-background-tertiary border border-text-secondary/20 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+              onChange={(event) => setEmail(event.target.value)}
+              className="w-full rounded-xl border border-text-secondary/20 bg-background-tertiary px-4 py-3 text-text-primary transition placeholder:text-text-muted focus:border-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/25"
               required
               autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              disabled={busy !== null}
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-text-secondary mb-1">
-              {tr('Password')}
-            </label>
-            <input
+            <PasswordField
               id="password"
-              type="password"
+              label={tr('Password')}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-background-tertiary border border-text-secondary/20 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-              required
-              minLength={8}
+              onChange={setPassword}
               autoComplete="new-password"
+              disabled={busy !== null}
             />
+            <PasswordRequirements password={password} />
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-text-secondary mb-1">
-              {tr('Confirm Password')}
-            </label>
-            <input
+            <PasswordField
               id="confirmPassword"
-              type="password"
+              label={tr('Confirm Password')}
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-background-tertiary border border-text-secondary/20 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-              required
+              onChange={setConfirmPassword}
               autoComplete="new-password"
+              disabled={busy !== null}
             />
+            {passwordsMismatch && (
+              <p role="alert" className="mt-1.5 text-xs text-red-300">{tr('Passwords do not match.')}</p>
+            )}
+            {passwordsMatch && (
+              <p className="mt-1.5 text-xs text-accent">{tr('Passwords match')}</p>
+            )}
           </div>
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg transition-colors disabled:opacity-50"
+            disabled={
+              busy !== null ||
+              !email.trim() ||
+              Boolean(usernameError) ||
+              usernameStatus !== 'available' ||
+              !passwordIsStrong ||
+              !passwordsMatch
+            }
+            className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-white shadow-lg shadow-accent/15 transition hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? tr('Creating Account...') : tr('Create Account')}
+            {busy === 'email' ? tr('Creating Account...') : tr('Create Account')}
           </button>
         </form>
 
-        <div className="mt-6 text-center text-text-secondary">
-          <p>{tr('Already have an account?')} <Link href="/auth/login" className="text-accent hover:text-accent-hover">{tr('Sign in')}</Link></p>
-        </div>
-
-        <div className="mt-6 text-center">
-          <Link href="/" className="text-text-secondary hover:text-text-primary">← {tr('Back to Home')}</Link>
-        </div>
+        <p className="text-center text-sm text-text-secondary">
+          {tr('Already have an account?')}{' '}
+          <Link href="/auth/login" className="font-semibold text-accent transition hover:text-accent-hover">
+            {tr('Sign in')}
+          </Link>
+        </p>
+        <Link href="/" className="block text-center text-sm text-text-muted transition hover:text-text-primary">
+          {tr('Back to Home')}
+        </Link>
       </div>
-    </div>
+    </AuthShell>
   );
 }

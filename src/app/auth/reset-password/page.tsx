@@ -15,17 +15,23 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (loading) return;
     setError('');
     setSent(false);
     setLoading(true);
 
-    const result = await resetPassword(email);
-    if (result.error) {
-      setError(result.error.message);
-    } else {
-      setSent(true);
+    try {
+      const result = await resetPassword(email);
+      if (result.error) {
+        setError('Unable to send reset instructions right now. Please try again later.');
+      } else {
+        setSent(true);
+      }
+    } catch {
+      setError('Unable to send reset instructions right now. Please try again later.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -44,6 +50,7 @@ export default function ResetPasswordPage() {
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="email"
             required
+            disabled={loading}
             className="w-full rounded-lg border border-text-secondary/20 bg-background-tertiary px-4 py-3 text-text-primary"
           />
           <button

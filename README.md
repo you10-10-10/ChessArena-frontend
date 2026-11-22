@@ -54,7 +54,8 @@ For an existing Supabase project where the `games` table predates these columns,
 ## Development
 
 - Authentication: Configure Supabase Auth email delivery, redirect URLs, and rate limits.
-- Better Auth: Phase 1 scaffold is disabled by default; see [Better Auth Phase 1](./docs/better-auth-phase1.md). Supabase Auth remains active.
+- Email delivery: To use Resend with Supabase Auth, configure Resend as the custom SMTP provider in the Supabase Dashboard. Keep SMTP credentials out of browser code and app environment variables.
+- Login and signup: Google/GitHub OAuth and stronger password/username validation use the existing Supabase Auth setup; see [Supabase authentication](./docs/supabase-authentication.md) for dashboard checks and the guarded username schema update.
 - Database: Review and run the migration on a non-production project before applying it to production.
 - Environment: Copy `.env.example` to `.env.local` and configure it privately.
 - Checklist: See [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) for audited status and remaining release gates.

@@ -438,6 +438,23 @@ CREATE INDEX IF NOT EXISTS idx_club_members_user ON club_members(user_id, club_i
 CREATE INDEX IF NOT EXISTS idx_tournaments_club_start ON tournaments(club_id, start_date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clubs_slug_lower ON clubs(LOWER(slug));
 
+-- Refuse to apply the case-insensitive username index if legacy names collide.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public.profiles
+    GROUP BY LOWER(username)
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Cannot enforce case-insensitive username uniqueness: resolve existing case-insensitive username collisions, then rerun the schema migration.';
+  END IF;
+END;
+$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_username_lower
+  ON public.profiles (LOWER(username));
+
 -- Enable RLS
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
@@ -1175,11 +1192,78 @@ GRANT EXECUTE ON FUNCTION public.join_tournament(UUID) TO authenticated;
 -- Auto-create profile trigger on auth.users insert
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  requested_username TEXT := LOWER(BTRIM(NEW.raw_user_meta_data->>'username'));
+  username_base TEXT;
+  username_candidate TEXT;
+  collision_suffix TEXT;
+  attempt INTEGER := 0;
 BEGIN
+  IF requested_username IS NOT NULL AND requested_username <> '' THEN
+    IF requested_username !~ '^[a-z0-9_]{3,20}$' THEN
+      RAISE EXCEPTION 'Username must contain 3-20 letters, numbers, or underscores'
+        USING ERRCODE = '23514';
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM UNNEST(ARRAY[
+        'admin', 'administrator', 'moderator', 'support', 'chessarena',
+        'fuck', 'shit', 'bitch', 'asshole'
+      ]) AS blocked(term)
+      WHERE POSITION(blocked.term IN requested_username) > 0
+    ) THEN
+      RAISE EXCEPTION 'Username is not available' USING ERRCODE = '23514';
+    END IF;
+
+    username_candidate := requested_username;
+    PERFORM pg_advisory_xact_lock(HASHTEXT(username_candidate));
+    IF EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE LOWER(username) = username_candidate
+    ) THEN
+      RAISE EXCEPTION 'Username already taken' USING ERRCODE = '23505';
+    END IF;
+  ELSE
+    username_base := LOWER(SPLIT_PART(COALESCE(NEW.email, ''), '@', 1));
+    username_base := REGEXP_REPLACE(username_base, '[^a-z0-9_]', '', 'g');
+    IF LENGTH(username_base) < 3 THEN
+      username_base := 'player';
+    END IF;
+    username_base := LEFT(username_base, 14);
+    IF EXISTS (
+      SELECT 1
+      FROM UNNEST(ARRAY[
+        'admin', 'administrator', 'moderator', 'support', 'chessarena',
+        'fuck', 'shit', 'bitch', 'asshole'
+      ]) AS blocked(term)
+      WHERE POSITION(blocked.term IN username_base) > 0
+    ) THEN
+      username_base := 'player';
+    END IF;
+
+    LOOP
+      attempt := attempt + 1;
+      collision_suffix := '_' || SUBSTRING(REPLACE(NEW.id::TEXT, '-', '') FROM 1 FOR 5);
+      IF attempt > 1 THEN
+        collision_suffix := '_' || SUBSTRING(MD5(NEW.id::TEXT || attempt::TEXT) FROM 1 FOR 5);
+      END IF;
+      username_candidate := LEFT(username_base, 20 - LENGTH(collision_suffix)) || collision_suffix;
+      PERFORM pg_advisory_xact_lock(HASHTEXT(username_candidate));
+
+      EXIT WHEN NOT EXISTS (
+        SELECT 1 FROM public.profiles
+        WHERE LOWER(username) = username_candidate
+      );
+      IF attempt >= 100 THEN
+        RAISE EXCEPTION 'Unable to generate a unique username for the new account';
+      END IF;
+    END LOOP;
+  END IF;
+
   INSERT INTO public.profiles (id, username, full_name, rating, preferences)
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
+    username_candidate,
     COALESCE(NEW.raw_user_meta_data->>'full_name', 'Chess Player'),
     1200,
     '{"boardTheme": "dark", "pieceTheme": "standard", "soundEnabled": true}'::jsonb
