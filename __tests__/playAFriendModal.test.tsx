@@ -71,7 +71,7 @@ describe('Play a Friend game navigation', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith(`/game/${gameId}`));
   });
 
-  it('routes the sender when polling discovers the accepted invitation', async () => {
+  it('shows a direct Play link for an accepted sent invitation', async () => {
     const invitationId = '00000000-0000-4000-8000-000000000002';
     const gameId = '00000000-0000-4000-8000-000000000003';
     fetchMock.mockImplementation(() => Promise.resolve({
@@ -99,6 +99,8 @@ describe('Play a Friend game navigation', () => {
     );
 
     await screen.findByText('Invitation accepted');
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith(`/game/${gameId}`));
+    const playLink = screen.getByRole('link', { name: 'Play' });
+    expect(playLink.getAttribute('href')).toBe(`/game/${gameId}`);
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

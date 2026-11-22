@@ -62,6 +62,16 @@ describe('game invitation acceptance response', () => {
         status: 'accepted',
         game_id: gameId,
         sender_id: userId,
+      }, {
+        id: 'expired-invitation',
+        status: 'pending',
+        expires_at: new Date(Date.now() - 60_000).toISOString(),
+        sender_id: userId,
+      }, {
+        id: 'active-invitation',
+        status: 'pending',
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        sender_id: userId,
       }],
       error: null,
     });
@@ -81,10 +91,12 @@ describe('game invitation acceptance response', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      sent: [{ id: invitationId, status: 'accepted', game_id: gameId }],
+      sent: [
+        { id: invitationId, status: 'accepted', game_id: gameId },
+        { id: 'active-invitation', status: 'pending' },
+      ],
     });
     expect(sentQuery.in).toHaveBeenCalledWith('status', ['pending', 'accepted']);
-    expect(sentQuery.or).toHaveBeenCalledWith(expect.stringContaining('status.eq.accepted'));
   });
 
   it('normalizes a snake-case game ID so the client can open the created game', async () => {

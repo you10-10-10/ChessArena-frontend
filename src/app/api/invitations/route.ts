@@ -53,12 +53,19 @@ export async function GET() {
       `)
       .eq('sender_id', user.id)
       .in('status', ['pending', 'accepted'])
-      .or(`status.eq.accepted,expires_at.gt.${new Date().toISOString()}`)
       .order('created_at', { ascending: false });
 
     if (sentError) throw sentError;
 
-    return NextResponse.json({ received: received || [], sent: sent || [] });
+    const now = Date.now();
+    const visibleSent = (sent || []).filter((invitation) => (
+      invitation.status === 'accepted'
+      || (invitation.status === 'pending'
+        && typeof invitation.expires_at === 'string'
+        && Date.parse(invitation.expires_at) > now)
+    ));
+
+    return NextResponse.json({ received: received || [], sent: visibleSent });
   } catch (error) {
     console.error('Fetch game invitations error:', {
       endpoint: '/api/invitations',

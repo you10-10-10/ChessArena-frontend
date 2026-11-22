@@ -96,7 +96,13 @@ function PlayContent() {
   const initialBotTurnStartedRef = useRef(false);
   const runBotTurnRef = useRef<((engine: GameEngine, color: 'w' | 'b', difficulty: BotProfileId) => Promise<void>) | null>(null);
   const finishLocalGameRef = useRef<((engine: GameEngine, result: 'white_wins' | 'black_wins' | 'draw', reason: 'checkmate' | 'draw' | 'timeout') => void) | null>(null);
-  const effectiveMode = !authLoading && !user ? 'local' : mode;
+  const effectiveMode = authLoading
+    ? 'checking'
+    : user
+      ? mode
+      : modeParam === 'bot'
+        ? 'local'
+        : 'guest';
 
   const engineFailureMessage = t('botEngineFailure');
   useEffect(() => {
@@ -549,12 +555,23 @@ function PlayContent() {
         </div>
       )}
 
-      {user && mode === 'online' && (
+      {(user ? mode === 'online' : effectiveMode === 'guest') && (
         <section className="mb-8 rounded-2xl border border-text-secondary/15 bg-background-secondary p-6 shadow-card">
           <h2 className="text-xl font-bold text-text-primary mb-2">Online Quick Match</h2>
           <p className="text-sm text-text-secondary mb-6">
-            Find an opponent matched by your ELO rating and time control.
+            Find a real opponent using your selected time control.
           </p>
+          {!user ? (
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="text-sm text-text-secondary">Sign in to join matchmaking or challenge a friend.</p>
+              <Link
+                href="/auth/login"
+                className="rounded-xl bg-accent px-6 py-2.5 font-bold text-white shadow-lg shadow-accent/25"
+              >
+                Sign In
+              </Link>
+            </div>
+          ) : (
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
@@ -590,6 +607,7 @@ function PlayContent() {
               </div>
             )}
           </div>
+          )}
         </section>
       )}
 

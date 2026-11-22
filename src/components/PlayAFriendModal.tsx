@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n/context';
@@ -53,7 +54,6 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const redirectedInvitationIdRef = useRef<string | null>(null);
 
   const fetchInvitations = useCallback(async () => {
     if (!user) return;
@@ -73,23 +73,13 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
       setSentInvitations(sent);
       setReceivedInvitations(Array.isArray(payload.received) ? payload.received : []);
 
-      const accepted = sent.find((invitation) =>
-        invitation.status === 'accepted' &&
-        typeof invitation.game_id === 'string' &&
-        invitation.game_id.length > 0
-      );
-      const acceptedGameId = accepted?.game_id;
-      if (accepted && typeof acceptedGameId === 'string' && redirectedInvitationIdRef.current !== accepted.id) {
-        redirectedInvitationIdRef.current = accepted.id;
-        router.push(`/game/${encodeURIComponent(acceptedGameId)}`);
-      }
     } catch (err) {
       console.error('Failed to load invitations:', {
         endpoint: '/api/invitations',
         message: err instanceof Error ? err.message : 'Unknown error',
       });
     }
-  }, [router, user]);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -452,12 +442,13 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
                       </p>
                     </div>
                     {inv.status === 'accepted' && invitationGameId ? (
-                      <button
-                        onClick={() => router.push(`/game/${encodeURIComponent(invitationGameId)}`)}
+                      <Link
+                        href={`/game/${encodeURIComponent(invitationGameId)}`}
+                        onClick={onClose}
                         className="px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-lg"
                       >
                         {tr('Play')}
-                      </button>
+                      </Link>
                     ) : (
                       <button
                         onClick={() => void handleRespond(inv.id, 'cancel')}
