@@ -14,6 +14,7 @@ function createBetterAuthInstance(
   const pool = new Pool({
     connectionString: databaseUrl,
     max: 1,
+    ssl: { rejectUnauthorized: true },
   });
 
   return betterAuth({
