@@ -33,36 +33,63 @@ function gameActionErrorResponse(error: { code?: string }, fallback: string) {
 }
 
 export async function GET(_request: NextRequest, { params }: RouteContext) {
+  let gameId: string | null = null;
+  let userId: string | null = null;
   try {
-    const { gameId } = await params;
-    if (!UUID_PATTERN.test(gameId)) {
+    const resolvedGameId = (await params).gameId;
+    gameId = resolvedGameId;
+    if (!UUID_PATTERN.test(resolvedGameId)) {
       return NextResponse.json({ error: 'Invalid game ID' }, { status: 400 });
     }
 
-    const { user } = await getPlayer();
-    if (!user) {
+    const supabase = await createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    userId = user?.id ?? null;
+    if (authError || !user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const admin = createAdminClient();
-    const { data: game, error } = await admin
+    const { data: game, error } = await supabase
       .from('games')
       .select('id, white_player_id, black_player_id, white_rating, black_rating, white_rating_change, black_rating_change, time_control, status, result, moves, fen, started_at, ended_at')
-      .eq('id', gameId)
+      .eq('id', resolvedGameId)
       .maybeSingle();
 
     if (error) {
-      console.error('Game lookup failed:', error.message);
-      return NextResponse.json({ error: 'Unable to load game' }, { status: 500 });
+      console.error('Game lookup failed:', {
+        gameId,
+        userId,
+        stage: 'participant_scoped_game_query',
+        code: error.code,
+        message: error.message,
+      });
+      if (error.code === '42501' || error.code === 'PGRST205' || error.code === '42P01') {
+        return NextResponse.json(
+          { error: 'Game database access is not configured. Apply sql/fix_private_game_access.sql in Supabase.' },
+          { status: 503 },
+        );
+      }
+      return NextResponse.json({ error: 'The game database could not be queried.' }, { status: 500 });
     }
     if (!game) {
-      return NextResponse.json({ error: 'Game not found' }, { status: 404 });
-    }
-    if (game.white_player_id !== user.id && game.black_player_id !== user.id) {
-      return NextResponse.json({ error: 'You are not a participant in this game' }, { status: 403 });
+      return NextResponse.json({ error: 'Game not found or unavailable to this account.' }, { status: 404 });
     }
     if (!Array.isArray(game.moves) || !game.moves.every((move: unknown) => typeof move === 'string')) {
-      console.error('Game has invalid persisted move data:', game.id);
+      console.error('Game has invalid persisted move data:', {
+        gameId,
+        userId,
+        stage: 'validate_persisted_moves',
+      });
+      return NextResponse.json({ error: 'Game data is invalid' }, { status: 500 });
+    }
+    if (typeof game.fen !== 'string') {
+      console.error('Game has no persisted FEN:', { gameId, userId, stage: 'validate_persisted_fen' });
+      return NextResponse.json({ error: 'Game data is invalid' }, { status: 500 });
+    }
+    try {
+      new Chess(game.fen);
+    } catch {
+      console.error('Game has an invalid persisted FEN:', { gameId, userId, stage: 'validate_persisted_fen' });
       return NextResponse.json({ error: 'Game data is invalid' }, { status: 500 });
     }
 
@@ -83,8 +110,13 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
       endedAt: game.ended_at,
     });
   } catch (error) {
-    console.error('Game API GET error:', error);
-    return NextResponse.json({ error: 'Unable to load game' }, { status: 500 });
+    console.error('Game API GET error:', {
+      gameId,
+      userId,
+      stage: 'load_game',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+    return NextResponse.json({ error: 'The game could not be loaded. Retry the request.' }, { status: 500 });
   }
 }
 
@@ -117,15 +149,35 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Invalid move request' }, { status: 400 });
     }
 
-    const admin = createAdminClient();
+    let admin: ReturnType<typeof createAdminClient>;
+    try {
+      admin = createAdminClient();
+    } catch (error) {
+      console.error('Game action admin client is unavailable:', {
+        gameId,
+        userId: user.id,
+        stage: 'create_admin_client',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return NextResponse.json(
+        { error: 'Game actions are not configured. Add SUPABASE_SERVICE_KEY as a private server environment variable.' },
+        { status: 503 },
+      );
+    }
     const { data: game, error: lookupError } = await admin
       .from('games')
       .select('id, white_player_id, black_player_id, status, result, moves, fen')
       .eq('id', gameId)
       .maybeSingle();
     if (lookupError) {
-      console.error('Game move lookup failed:', lookupError.message);
-      return NextResponse.json({ error: 'Unable to load game' }, { status: 500 });
+      console.error('Game move lookup failed:', {
+        gameId,
+        userId: user.id,
+        stage: 'load_game_before_action',
+        code: lookupError.code,
+        message: lookupError.message,
+      });
+      return NextResponse.json({ error: 'The game database failed while loading this move.' }, { status: 500 });
     }
     if (!game) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 });

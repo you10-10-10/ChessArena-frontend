@@ -16,7 +16,7 @@ A chess platform project with local play, Supabase-backed account flows, and dat
 - **Frontend**: Next.js, React, TypeScript, Tailwind CSS
 - **Backend**: Supabase (PostgreSQL + Auth)
 - **Chess Engine**: Stockfish 19 (GPL-3.0) for computer play, with chess.js validating legal moves
-- **Multiplayer**: Database matchmaking and HTTP move synchronization; the standalone Socket.IO service is not currently connected to the web game flow
+- **Multiplayer**: Database matchmaking, authenticated game reads, Supabase Realtime updates with HTTP polling fallback, and server-validated HTTP moves; the standalone Socket.IO service is not connected to the web game flow
 - **Hosting**: Vercel for frontend, Supabase for backend
 
 ## Quick Start
@@ -50,6 +50,8 @@ npm run db:migrate
 Never expose `SUPABASE_SERVICE_KEY` or `DATABASE_URL` to the browser or commit them. The schema migration creates tables, indexes, profile/leaderboard triggers, matchmaking/tournament RPCs, server-only transactional game-result/Elo updates, row-level security policies, and two curated beginner mate-in-one puzzles. It also separates private preferences and hides puzzle solutions from public database roles. Do not run it with a publishable/anon key.
 
 For an existing Supabase project where the `games` table predates these columns, existing accounts are missing profiles, or you want the new club/tournament features, private friend messaging, and starter puzzles, apply `sql/fix_matchmaking_and_seed_puzzles.sql` in the Supabase SQL Editor. This compatibility patch is safe to rerun. Private messages are limited to accepted, non-blocked friendships and refresh automatically; real-time delivery is not configured.
+
+For private friend games, apply `sql/fix_game_invitations.sql` and `sql/fix_private_game_access.sql` in the Supabase SQL Editor. Game rows are readable only by their participants; the second script also enables the `games` table in Supabase Realtime. Keep `SUPABASE_SERVICE_KEY` configured only as a private server environment variable for move persistence.
 
 ## Development
 

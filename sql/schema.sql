@@ -530,6 +530,8 @@ ON CONFLICT (user_id) DO NOTHING;
 
 CREATE POLICY "Game participants read games" ON games FOR SELECT
   USING (auth.uid() = white_player_id OR auth.uid() = black_player_id);
+REVOKE SELECT ON public.games FROM PUBLIC, anon;
+GRANT SELECT ON public.games TO authenticated;
 CREATE POLICY "Game participants read moves" ON game_moves FOR SELECT
   USING (EXISTS (
     SELECT 1 FROM games

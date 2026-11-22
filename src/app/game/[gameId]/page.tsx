@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { GameEngine } from '@/lib/chess/game';
 import ChessBoard from '@/components/ChessBoard';
 import { useI18n } from '@/lib/i18n/context';
+import { supabase } from '@/lib/supabase/client';
 
 interface GameResponse {
   id: string;
@@ -64,7 +65,17 @@ export default function GamePage() {
       setEngine(current => current?.fen === nextEngine.fen ? current : nextEngine);
       setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load game.');
+      const message = loadError instanceof TypeError
+        ? 'Network error while loading the game. Check your connection and retry.'
+        : loadError instanceof Error ? loadError.message : 'Unable to load game.';
+      console.error('Game load request failed:', {
+        endpoint: `/api/games/${gameId}`,
+        gameId,
+        userId: user?.id,
+        stage: 'load_game',
+        message,
+      });
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -77,6 +88,35 @@ export default function GamePage() {
     }, 2000);
     return () => window.clearInterval(poll);
   }, [game?.status, loadGame, savingMove]);
+
+  const activeGameId = game?.id;
+  const activeGameStatus = game?.status;
+
+  useEffect(() => {
+    if (!supabase || !activeGameId || activeGameStatus !== 'in_progress') return;
+    const realtimeClient = supabase;
+
+    const channel = realtimeClient
+      .channel(`online-game:${activeGameId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${activeGameId}` },
+        () => void loadGame(),
+      )
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('Game realtime subscription failed:', {
+            gameId: activeGameId,
+            userId: user?.id,
+            status,
+          });
+        }
+      });
+
+    return () => {
+      void realtimeClient.removeChannel(channel);
+    };
+  }, [activeGameId, activeGameStatus, loadGame, user?.id]);
 
   const handleMove = async (move: string) => {
     if (!game || savingMove || game.status !== 'in_progress') return;
@@ -95,7 +135,17 @@ export default function GamePage() {
       }
       await loadGame();
     } catch (moveError) {
-      setError(moveError instanceof Error ? moveError.message : 'Unable to save move.');
+      const message = moveError instanceof TypeError
+        ? 'Network error while saving the move. Check your connection and retry.'
+        : moveError instanceof Error ? moveError.message : 'Unable to save move.';
+      console.error('Game move request failed:', {
+        endpoint: `/api/games/${game.id}`,
+        gameId: game.id,
+        userId: user?.id,
+        stage: 'save_move',
+        message,
+      });
+      setError(message);
       await loadGame();
     } finally {
       setSavingMove(false);
@@ -120,7 +170,17 @@ export default function GamePage() {
       }
       await loadGame();
     } catch (resignError) {
-      setError(resignError instanceof Error ? resignError.message : 'Unable to resign.');
+      const message = resignError instanceof TypeError
+        ? 'Network error while resigning. Check your connection and retry.'
+        : resignError instanceof Error ? resignError.message : 'Unable to resign.';
+      console.error('Game resignation request failed:', {
+        endpoint: `/api/games/${game.id}`,
+        gameId: game.id,
+        userId: user?.id,
+        stage: 'resign_game',
+        message,
+      });
+      setError(message);
     } finally {
       setSavingMove(false);
     }
@@ -139,6 +199,17 @@ export default function GamePage() {
       <div className="mx-auto max-w-xl rounded-xl bg-background-secondary p-8 text-center">
         <h1 className="text-2xl font-bold text-text-primary">{tr('Game unavailable')}</h1>
         <p role="alert" className="mt-3 text-red-300">{tr(error || 'This game could not be loaded.')}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true);
+            setError(null);
+            void loadGame();
+          }}
+          className="mt-6 rounded-lg border border-text-secondary/20 px-5 py-3 font-semibold text-text-primary hover:bg-background-tertiary"
+        >
+          {tr('Retry')}
+        </button>
         <Link href="/play" className="mt-6 inline-block rounded-lg bg-accent px-5 py-3 font-semibold text-white">
           {tr('Back to Play')}
         </Link>

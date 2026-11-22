@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n/context';
@@ -25,6 +25,7 @@ interface GameInvitation {
   game_id: string | null;
   expires_at: string;
   created_at: string;
+  updated_at: string;
   sender?: PlayerProfile;
   receiver?: PlayerProfile;
 }
@@ -53,27 +54,54 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const redirectedInvitationIdRef = useRef<string | null>(null);
 
-  const fetchInvitations = async () => {
+  const fetchInvitations = useCallback(async () => {
     if (!user) return;
     try {
       const response = await fetch('/api/invitations', { cache: 'no-store' });
       const payload = await response.json();
-      if (response.ok) {
-        setSentInvitations(payload.sent || []);
-        setReceivedInvitations(payload.received || []);
+      if (!response.ok) {
+        console.error('Failed to load invitations:', {
+          endpoint: '/api/invitations',
+          status: response.status,
+          message: payload?.error,
+        });
+        return;
+      }
+
+      const sent = Array.isArray(payload.sent) ? payload.sent as GameInvitation[] : [];
+      setSentInvitations(sent);
+      setReceivedInvitations(Array.isArray(payload.received) ? payload.received : []);
+
+      const accepted = sent.find((invitation) =>
+        invitation.status === 'accepted' &&
+        typeof invitation.game_id === 'string' &&
+        invitation.game_id.length > 0 &&
+        Number.isFinite(Date.parse(invitation.updated_at)) &&
+        Date.now() - Date.parse(invitation.updated_at) < 30_000
+      );
+      const acceptedGameId = accepted?.game_id;
+      if (accepted && typeof acceptedGameId === 'string' && redirectedInvitationIdRef.current !== accepted.id) {
+        redirectedInvitationIdRef.current = accepted.id;
+        router.push(`/game/${encodeURIComponent(acceptedGameId)}`);
       }
     } catch (err) {
-      console.error('Failed to load invitations:', err);
+      console.error('Failed to load invitations:', {
+        endpoint: '/api/invitations',
+        message: err instanceof Error ? err.message : 'Unknown error',
+      });
     }
-  };
+  }, [router, user]);
+
+  const hasPendingSentInvitation = sentInvitations.some((invitation) => invitation.status === 'pending');
 
   useEffect(() => {
-    if (!isOpen || !user) return;
+    if (!user || (!isOpen && !hasPendingSentInvitation)) return;
     void fetchInvitations();
     const interval = setInterval(() => void fetchInvitations(), 3000);
     return () => clearInterval(interval);
-  }, [isOpen, user]);
+  }, [fetchInvitations, hasPendingSentInvitation, isOpen, user]);
 
   useEffect(() => {
     if (!searchQuery || searchQuery.trim().length < 2) {
@@ -129,7 +157,16 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
       setSelectedPlayer(null);
       await fetchInvitations();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send invitation.');
+      const message = err instanceof TypeError
+        ? 'Network error while sending the invitation. Check your connection and retry.'
+        : err instanceof Error ? err.message : 'Failed to send invitation.';
+      console.error('Invitation send failed:', {
+        endpoint: '/api/invitations',
+        userId: user?.id,
+        stage: 'send_invitation',
+        message,
+      });
+      setError(message);
     } finally {
       setSubmitting(false);
     }
@@ -159,7 +196,17 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
       }
       await fetchInvitations();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to process action.');
+      const message = err instanceof TypeError
+        ? 'Network error while responding to the invitation. Retry to rejoin the game.'
+        : err instanceof Error ? err.message : 'Failed to process action.';
+      console.error('Invitation response failed:', {
+        endpoint: '/api/invitations',
+        invitationId,
+        userId: user?.id,
+        stage: 'respond_to_invitation',
+        message,
+      });
+      setError(message);
     } finally {
       setSubmitting(false);
     }
@@ -394,26 +441,40 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
           <div className="mt-8 pt-6 border-t border-text-secondary/15">
             <h3 className="text-sm font-bold text-text-secondary mb-3 flex items-center gap-2">
               <Clock className="w-4 h-4 text-accent" />
-              {tr('Pending Sent Invitations')} ({sentInvitations.length})
+              {tr('Sent Invitations')} ({sentInvitations.length})
             </h3>
             <div className="space-y-2">
-              {sentInvitations.map((inv) => (
-                <div key={inv.id} className="flex items-center justify-between bg-background-tertiary p-3 rounded-xl border border-text-secondary/10">
-                  <div>
-                    <p className="text-sm font-semibold text-text-primary">
-                      {tr('Invited')} <strong className="text-accent">@{inv.receiver?.username || tr('Player')}</strong> ({inv.time_control})
-                    </p>
-                    <p className="text-xs text-text-secondary">{tr('Waiting for response…')}</p>
+              {sentInvitations.map((inv) => {
+                const invitationGameId = inv.game_id;
+                return (
+                  <div key={inv.id} className="flex items-center justify-between bg-background-tertiary p-3 rounded-xl border border-text-secondary/10">
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary">
+                        {tr('Invited')} <strong className="text-accent">@{inv.receiver?.username || tr('Player')}</strong> ({inv.time_control})
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        {inv.status === 'accepted' ? tr('Invitation accepted') : tr('Waiting for response…')}
+                      </p>
+                    </div>
+                    {inv.status === 'accepted' && invitationGameId ? (
+                      <button
+                        onClick={() => router.push(`/game/${encodeURIComponent(invitationGameId)}`)}
+                        className="px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-lg"
+                      >
+                        {tr('Play')}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => void handleRespond(inv.id, 'cancel')}
+                        disabled={submitting}
+                        className="px-3 py-1.5 bg-background hover:bg-red-500/20 text-text-secondary hover:text-red-300 text-xs font-semibold rounded-lg border border-text-secondary/20 transition-colors"
+                      >
+                        {tr('Cancel Invite')}
+                      </button>
+                    )}
                   </div>
-                  <button
-                    onClick={() => void handleRespond(inv.id, 'cancel')}
-                    disabled={submitting}
-                    className="px-3 py-1.5 bg-background hover:bg-red-500/20 text-text-secondary hover:text-red-300 text-xs font-semibold rounded-lg border border-text-secondary/20 transition-colors"
-                  >
-                    {tr('Cancel Invite')}
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

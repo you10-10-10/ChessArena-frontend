@@ -156,15 +156,29 @@ BEGIN
     RAISE EXCEPTION 'Invitation not found';
   END IF;
 
+  IF invitation.status = 'accepted'
+    AND p_action = 'accept'
+    AND invitation.receiver_id = requesting_user
+    AND invitation.game_id IS NOT NULL THEN
+    RETURN jsonb_build_object('status', 'accepted', 'gameId', invitation.game_id);
+  END IF;
+
+  IF p_action = 'cancel' AND invitation.sender_id <> requesting_user THEN
+    RAISE EXCEPTION 'Only the sender can cancel this invitation' USING ERRCODE = '42501';
+  END IF;
+  IF p_action IN ('accept', 'decline') AND invitation.receiver_id <> requesting_user THEN
+    RAISE EXCEPTION 'Only the recipient can respond to this invitation' USING ERRCODE = '42501';
+  END IF;
+
   IF invitation.status <> 'pending' THEN
     RAISE EXCEPTION 'Invitation is no longer pending';
   END IF;
 
-  IF invitation.expires_at < NOW() THEN
+  IF invitation.expires_at <= NOW() THEN
     UPDATE public.game_invitations
     SET status = 'expired', updated_at = NOW()
     WHERE id = p_invitation_id;
-    RAISE EXCEPTION 'Invitation has expired';
+    RETURN jsonb_build_object('status', 'expired');
   END IF;
 
   IF p_action = 'cancel' THEN
