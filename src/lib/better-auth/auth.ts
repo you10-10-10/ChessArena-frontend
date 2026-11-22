@@ -33,6 +33,11 @@ function createBetterAuthInstance(
       type: 'postgres',
       schemaName: 'better_auth',
     },
+    advanced: {
+      database: {
+        validateSchema: process.env.BETTER_AUTH_ENABLED === 'true',
+      },
+    },
     emailAndPassword: {
       enabled: true,
       sendResetPassword: async ({ user, url }) => {

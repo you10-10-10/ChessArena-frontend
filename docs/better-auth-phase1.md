@@ -47,7 +47,10 @@ config handshake return 404 unless `BETTER_AUTH_ENABLED=true`. When enabled,
 Better Auth expects its tables in the PostgreSQL `better_auth` schema, which has
 **not** been created or migrated as part of Phase 1. Requests that require the
 database will not work until a later, separately approved database phase is
-complete.
+complete. Schema validation is skipped only while Better Auth is disabled, so
+the Dash handshake can initialize without creating auth tables. Setting
+`BETTER_AUTH_ENABLED=true` restores schema validation; migrate the schema before
+enabling auth.
 
 The existing Supabase Auth integration remains the active authentication
 system. In particular, existing profiles reference UUIDs in `auth.users`, and
