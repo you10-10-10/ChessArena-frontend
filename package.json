@@ -12,6 +12,7 @@
     "test": "jest --runInBand",
     "academy:seed:generate": "node scripts/generate_academy_level1_seed.mjs",
     "db:migrate": "node scripts/migrate.js",
+    "db:fix-friend-play": "node scripts/migrate.js friendPlay",
     "socket": "node server/socket.js"
   },
   "dependencies": {

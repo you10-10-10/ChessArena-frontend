@@ -613,3 +613,5 @@ VALUES
     'Beginner'
   )
 ON CONFLICT (id) DO NOTHING;
+
+NOTIFY pgrst, 'reload schema';

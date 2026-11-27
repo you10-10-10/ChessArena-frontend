@@ -39,4 +39,31 @@ describe('database migration runner', () => {
     expect(queries[2]).toContain('CREATE OR REPLACE FUNCTION public.respond_friend_request');
     expect(queries[3]).toBe('COMMIT');
   });
+
+  it('applies the existing-installation compatibility patch by itself', async () => {
+    await runMigrations('compatibility');
+
+    const client = mockedClient.mock.results[0].value;
+    const queries = client.query.mock.calls.map(([query]) => query);
+
+    expect(queries).toHaveLength(3);
+    expect(queries[0]).toBe('BEGIN');
+    expect(queries[1]).toContain('ALTER TABLE public.games');
+    expect(queries[1]).toContain('CREATE OR REPLACE FUNCTION public.apply_online_game_action');
+    expect(queries[2]).toBe('COMMIT');
+  });
+
+  it('applies compatibility and invitation RPC migrations together for friend play', async () => {
+    await runMigrations('friendPlay');
+
+    const client = mockedClient.mock.results[0].value;
+    const queries = client.query.mock.calls.map(([query]) => query);
+
+    expect(queries).toHaveLength(4);
+    expect(queries[0]).toBe('BEGIN');
+    expect(queries[1]).toContain('CREATE OR REPLACE FUNCTION public.apply_online_game_action');
+    expect(queries[2]).toContain('CREATE OR REPLACE FUNCTION public.send_game_invitation');
+    expect(queries[2]).toContain('CREATE OR REPLACE FUNCTION public.respond_game_invitation');
+    expect(queries[3]).toBe('COMMIT');
+  });
 });

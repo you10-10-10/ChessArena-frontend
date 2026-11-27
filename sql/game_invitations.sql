@@ -259,3 +259,5 @@ REVOKE ALL ON FUNCTION public.send_game_invitation(TEXT, TEXT, TEXT, TEXT) FROM 
 REVOKE ALL ON FUNCTION public.respond_game_invitation(UUID, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.send_game_invitation(TEXT, TEXT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.respond_game_invitation(UUID, TEXT) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';

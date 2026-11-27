@@ -3,21 +3,37 @@ const path = require('node:path');
 const { loadEnvConfig } = require('@next/env');
 const { Client } = require('pg');
 
-async function runMigrations() {
+const migrationSets = {
+  default: [
+    '../sql/schema.sql',
+    '../sql/fix_friendships.sql',
+  ],
+  compatibility: [
+    '../sql/fix_matchmaking_and_seed_puzzles.sql',
+  ],
+  friendPlay: [
+    '../sql/fix_matchmaking_and_seed_puzzles.sql',
+    '../sql/game_invitations.sql',
+  ],
+};
+
+async function runMigrations(migrationSet = 'default') {
   loadEnvConfig(process.cwd());
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString || !connectionString.startsWith('postgres')) {
     throw new Error(
-      'Set DATABASE_URL to the Supabase Postgres connection string (Project Settings > Database > Connection string).'
+      'Set DATABASE_URL in .env.local to the Supabase Postgres connection string (Project Settings > Database > Connection string).'
     );
   }
 
-  const migrationPaths = [
-    path.join(__dirname, '../sql/schema.sql'),
-    path.join(__dirname, '../sql/fix_friendships.sql'),
-  ];
-  const migrations = migrationPaths.map(filePath => fs.readFileSync(filePath, 'utf8'));
+  const migrationFiles = migrationSets[migrationSet];
+  if (!migrationFiles) {
+    throw new Error(`Unknown migration set: ${migrationSet}`);
+  }
+  const migrations = migrationFiles.map(filePath =>
+    fs.readFileSync(path.join(__dirname, filePath), 'utf8')
+  );
   const client = new Client({ connectionString });
 
   await client.connect();
@@ -27,7 +43,7 @@ async function runMigrations() {
       await client.query(migration);
     }
     await client.query('COMMIT');
-    console.log('ChessArena database schema and friendship RPCs applied successfully.');
+    console.log(`ChessArena ${migrationSet} database migrations applied successfully.`);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -37,7 +53,7 @@ async function runMigrations() {
 }
 
 if (require.main === module) {
-  runMigrations().catch(error => {
+  runMigrations(process.argv[2] || 'default').catch(error => {
     console.error('Database migration failed:', error.message);
     process.exitCode = 1;
   });
