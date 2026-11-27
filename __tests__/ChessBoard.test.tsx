@@ -12,6 +12,7 @@ jest.mock('react-chessboard', () => {
       options: {
         onSquareClick?: (args: { piece: { pieceType: string } | null; square: string }) => void;
         position: string;
+        boardStyle?: React.CSSProperties;
       };
     }) => {
       const piecesBySquare: Record<string, { pieceType: string }> = {
@@ -22,7 +23,13 @@ jest.mock('react-chessboard', () => {
 
       return React.createElement(
         'div',
-        { 'data-testid': 'board', 'data-position': options.position },
+        {
+          'data-testid': 'board',
+          'data-position': options.position,
+          'data-board-width': options.boardStyle?.width,
+          'data-board-height': options.boardStyle?.height,
+          'data-board-position': options.boardStyle?.position,
+        },
         ...['e2', 'e4', 'e7', 'e5', 'a7', 'a8'].map((square) => React.createElement(
           'button',
           {
@@ -41,6 +48,24 @@ jest.mock('react-chessboard', () => {
 });
 
 describe('ChessBoard interactions', () => {
+  it('keeps the rendered board square and fills its square container', () => {
+    render(
+      <I18nProvider>
+        <ChessBoard
+          engine={new GameEngine()}
+          onReset={jest.fn()}
+          isWhitePlayer
+        />
+      </I18nProvider>,
+    );
+
+    const board = screen.getByTestId('board');
+    expect(board.parentElement?.classList.contains('aspect-square')).toBe(true);
+    expect(board.getAttribute('data-board-width')).toBe('100%');
+    expect(board.getAttribute('data-board-height')).toBe('100%');
+    expect(board.getAttribute('data-board-position')).toBe('absolute');
+  });
+
   it('lets both local players make alternating legal moves', () => {
     const engine = new GameEngine();
     const onMove = jest.fn();

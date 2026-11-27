@@ -219,6 +219,9 @@ export default function ChessBoard({
               allowDrawingArrows: true,
               boardStyle: {
                 width: '100%',
+                height: '100%',
+                position: 'absolute',
+                inset: 0,
                 borderRadius: '8px',
               },
               lightSquareStyle: { backgroundColor: boardTheme.light },
