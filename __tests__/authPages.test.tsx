@@ -103,7 +103,7 @@ describe('authentication forms', () => {
   it('starts Google OAuth from the login form', async () => {
     renderWithI18n(<LoginPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Continue with Google' }));
-    await waitFor(() => expect(signInWithOAuth).toHaveBeenCalledWith('google'));
+    await waitFor(() => expect(signInWithOAuth).toHaveBeenCalledWith('google', 'http://localhost/play'));
     expect((screen.getByRole('button', { name: 'Continue with GitHub' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

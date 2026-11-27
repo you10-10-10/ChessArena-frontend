@@ -10,6 +10,17 @@ import { useAuth, type OAuthProvider } from '@/lib/auth';
 import { getPublicSignInError, normalizeEmail } from '@/lib/auth/validation';
 import { useI18n } from '@/lib/i18n/context';
 
+function getRedirectTo() {
+  const candidate = new URLSearchParams(window.location.search).get('redirectTo');
+  if (!candidate || !candidate.startsWith('/') || candidate.startsWith('//') || candidate.startsWith('/\\')) {
+    return '/play';
+  }
+  const destination = new URL(candidate, window.location.origin);
+  return destination.origin === window.location.origin
+    ? `${destination.pathname}${destination.search}${destination.hash}`
+    : '/play';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading: authLoading, signIn, signInWithOAuth } = useAuth();
@@ -21,7 +32,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      router.replace('/play');
+      router.replace(getRedirectTo());
     }
   }, [authLoading, router, user]);
 
@@ -39,7 +50,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace('/play');
+      router.replace(getRedirectTo());
       router.refresh();
     } catch {
       setError(getPublicSignInError());
@@ -52,7 +63,7 @@ export default function LoginPage() {
     setBusy(provider);
     setError('');
     try {
-      const result = await signInWithOAuth(provider);
+      const result = await signInWithOAuth(provider, `${window.location.origin}${getRedirectTo()}`);
       if (result.error) {
         setError(`Unable to start ${provider === 'google' ? 'Google' : 'GitHub'} sign-in. Please try again.`);
         setBusy(null);

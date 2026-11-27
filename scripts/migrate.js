@@ -14,6 +14,7 @@ const migrationSets = {
   friendPlay: [
     '../sql/fix_matchmaking_and_seed_puzzles.sql',
     '../sql/game_invitations.sql',
+    '../sql/shareable_game_challenges.sql',
   ],
 };
 

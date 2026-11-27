@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { useI18n } from '@/lib/i18n/context';
-import { Search, UserPlus, Clock, X, Check, AlertCircle, Sparkles } from 'lucide-react';
+import { Search, UserPlus, Clock, X, Check, AlertCircle, Sparkles, Link2, Copy } from 'lucide-react';
 
 interface PlayerProfile {
   id: string;
@@ -52,6 +52,8 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [challengeRecipient, setChallengeRecipient] = useState('');
+  const [challengeUrl, setChallengeUrl] = useState<string | null>(null);
 
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -194,6 +196,54 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
       setError(message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCreateChallengeLink = async () => {
+    setSubmitting(true);
+    setError(null);
+    setSuccessMessage(null);
+    setChallengeUrl(null);
+    try {
+      const response = await fetch('/api/challenges', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          timeControl,
+          selectedColor,
+          recipientUsername: challengeRecipient.trim() || null,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || typeof payload.challengeId !== 'string') {
+        throw new Error(payload.error || 'Unable to create challenge link.');
+      }
+
+      const url = `${window.location.origin}/play/challenge/${encodeURIComponent(payload.challengeId)}`;
+      setChallengeUrl(url);
+      try {
+        await navigator.clipboard.writeText(url);
+        setSuccessMessage(tr('Challenge link copied. It expires in one hour.'));
+      } catch {
+        setSuccessMessage(tr('Challenge link created. Copy it below; it expires in one hour.'));
+      }
+    } catch (err) {
+      const message = err instanceof TypeError
+        ? 'Network error while creating the challenge link. Check your connection and retry.'
+        : err instanceof Error ? err.message : 'Unable to create challenge link.';
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCopyChallengeLink = async () => {
+    if (!challengeUrl) return;
+    try {
+      await navigator.clipboard.writeText(challengeUrl);
+      setSuccessMessage(tr('Challenge link copied. It expires in one hour.'));
+    } catch {
+      setError(tr('Copy failed. Select and copy the link manually.'));
     }
   };
 
@@ -420,6 +470,81 @@ export default function PlayAFriendModal({ isOpen, onClose }: { isOpen: boolean;
             </div>
           </div>
         )}
+
+        <section className="mt-7 rounded-2xl border border-accent/25 bg-accent/5 p-4 sm:p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Link2 className="h-4 w-4 text-accent" />
+            <h3 className="text-sm font-bold">{tr('Send a challenge link')}</h3>
+          </div>
+          <p className="mb-4 text-xs text-text-secondary">
+            {tr('Create a private game link and send it directly to your friend. It expires after one hour.')}
+          </p>
+          <label htmlFor="challenge-recipient" className="mb-1.5 block text-xs font-semibold text-text-secondary">
+            {tr('Friend username (optional)')}
+          </label>
+          <input
+            id="challenge-recipient"
+            type="text"
+            value={challengeRecipient}
+            onChange={(event) => setChallengeRecipient(event.target.value)}
+            maxLength={64}
+            autoComplete="off"
+            placeholder={tr('Leave blank to allow the first player with the link')}
+            className="mb-4 w-full rounded-xl border border-text-secondary/25 bg-background-tertiary px-3 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none"
+          />
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            <label className="text-xs font-semibold text-text-secondary">
+              {tr('Time Control')}
+              <select
+                value={timeControl}
+                onChange={(event) => setTimeControl(event.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-text-secondary/25 bg-background-tertiary px-3 py-2.5 text-sm font-medium text-text-primary focus:border-accent focus:outline-none"
+              >
+                {TIME_CONTROLS.map((control) => <option key={control} value={control}>{control}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-text-secondary">
+              {tr('Host color')}
+              <select
+                value={selectedColor}
+                onChange={(event) => setSelectedColor(event.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-text-secondary/25 bg-background-tertiary px-3 py-2.5 text-sm font-medium text-text-primary focus:border-accent focus:outline-none"
+              >
+                <option value="random">{tr('Random Color')}</option>
+                <option value="white">{tr('Play White')}</option>
+                <option value="black">{tr('Play Black')}</option>
+              </select>
+            </label>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleCreateChallengeLink()}
+            disabled={submitting}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+          >
+            <Link2 className="h-4 w-4" />
+            {submitting ? tr('Creating link…') : tr('Create challenge link')}
+          </button>
+          {challengeUrl && (
+            <div className="mt-3 flex gap-2">
+              <input
+                aria-label={tr('Challenge link')}
+                readOnly
+                value={challengeUrl}
+                onFocus={(event) => event.currentTarget.select()}
+                className="min-w-0 flex-1 rounded-lg border border-text-secondary/20 bg-background px-3 py-2 text-xs text-text-secondary"
+              />
+              <button
+                type="button"
+                onClick={() => void handleCopyChallengeLink()}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-text-secondary/20 px-3 py-2 text-xs font-semibold hover:bg-background"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                {tr('Copy')}
+              </button>
+            </div>
+          )}
+        </section>
 
         {/* Sent Pending Invitations Management */}
         {sentInvitations.length > 0 && (

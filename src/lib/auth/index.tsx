@@ -13,7 +13,7 @@ interface AuthContextType {
   loading: boolean;
   signUp: (email: string, password: string, username: string) => Promise<{ error: Error | null; needsEmailConfirmation: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signInWithOAuth: (provider: OAuthProvider) => Promise<{ error: Error | null }>;
+  signInWithOAuth: (provider: OAuthProvider, redirectTo?: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   updatePassword: (password: string) => Promise<{ error: Error | null }>;
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signInWithOAuth = async (provider: OAuthProvider) => {
+  const signInWithOAuth = async (provider: OAuthProvider, redirectTo?: string) => {
     if (!supabase) {
       return { error: new Error('Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.') };
     }
@@ -121,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo: redirectTo || window.location.origin },
       });
       return { error: error ? new Error(error.message) : null };
     } catch (error) {

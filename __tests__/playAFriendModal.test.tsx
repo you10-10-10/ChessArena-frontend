@@ -103,4 +103,45 @@ describe('Play a Friend game navigation', () => {
     expect(playLink.getAttribute('href')).toBe(`/game/${gameId}`);
     expect(mockPush).not.toHaveBeenCalled();
   });
+
+  it('creates a challenge link targeted to the entered friend username', async () => {
+    const challengeId = '00000000-0000-4000-8000-000000000004';
+    fetchMock.mockImplementation((url, options) => {
+      if (url === '/api/challenges' && options?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ status: 'created', challengeId }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ received: [], sent: [] }),
+      });
+    });
+
+    render(
+      <I18nProvider>
+        <PlayAFriendModal isOpen onClose={jest.fn()} />
+      </I18nProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText('Friend username (optional)'), {
+      target: { value: 'friend_name' },
+    });
+    fireEvent.change(screen.getByLabelText('Time Control'), { target: { value: '5+0' } });
+    fireEvent.change(screen.getByLabelText('Host color'), { target: { value: 'white' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create challenge link' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/challenges', expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          timeControl: '5+0',
+          selectedColor: 'white',
+          recipientUsername: 'friend_name',
+        }),
+      }));
+    });
+    expect(await screen.findByDisplayValue(`http://localhost/play/challenge/${challengeId}`)).toBeTruthy();
+  });
 });
